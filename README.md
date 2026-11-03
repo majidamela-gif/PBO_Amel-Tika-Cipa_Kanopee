@@ -3,7 +3,7 @@
 
 Kanopee merupakan salah satu cafe yang berada di Jatinangor, lebih tepatnya di Komplek Puri Indah, Jl. Kolonel Achmad Syam No.8 Blok B1, Cikeruh, Kec. Jatinangor, Kabupaten Sumedang, Jawa Barat 45363. Kami menggunakan Kanopee sebagai acuan pembuatan web yang memungkinkan pelanggan melakukan pemesanan secara mandiri melalui web setelah mendapatkan tempat duduk di cafe, tanpa perlu datang langsung ke kasir untuk memesan.
 
-Sistem ini memiliki dua jenis pengguna, yaitu **Pelanggan (Customer)** dan **Admin**, dengan hak akses dan fitur yang berbeda.
+Sistem ini memiliki dua jenis pengguna, yaitu Pelanggan (Customer) dan Admin, dengan hak akses dan fitur yang berbeda.
 
 ---
 
