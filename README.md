@@ -118,6 +118,9 @@ Rancangan tabel:
 | `transaksi` | Menyimpan informasi transaksi pelanggan |
 | `detail_transaksi` | Menyimpan rincian menu dalam setiap transaksi |
 
+### Skema Tabel
+![Skema Tabel Kanopeesan](images/SkemaTabel.jpg)
+
 ### Relasi Database
 
 - Satu user dapat memiliki banyak transaksi.
