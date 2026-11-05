@@ -6,6 +6,17 @@ Kanopee merupakan salah satu cafe yang berada di Jatinangor, lebih tepatnya di K
 Sistem ini memiliki dua jenis pengguna, yaitu Pelanggan (Customer) dan Admin, dengan hak akses dan fitur yang berbeda.
 
 ---
+## Anggota Kelompok
+
+| No. | Nama | NIM | Pembagian |
+|-----|------|-----|-----------|
+| 1. | Syifa Dwi Amirah | 140810250012 |  |
+| 2. | Amela Dzakiah Majid | 140810250051 |  |
+| 3. | Atika Shafira | 140810250093 |  |
+
+Pembagian dapat bertambah atau berubah seiring waktu
+
+---
 
 ## Latar Belakang
 
