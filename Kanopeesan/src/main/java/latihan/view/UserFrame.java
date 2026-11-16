@@ -351,7 +351,7 @@ public class UserFrame extends javax.swing.JFrame {
                     .addComponent(jLabel30)
                     .addComponent(jLabel32)
                     .addComponent(jLabel33))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addContainerGap(22, Short.MAX_VALUE))
         );
         jPanel12Layout.setVerticalGroup(
             jPanel12Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
