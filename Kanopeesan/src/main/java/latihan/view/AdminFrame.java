@@ -4,6 +4,27 @@
  */
 package latihan.view;
 
+import latihan.db.DBConnection;
+import latihan.util.Session;
+
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+import java.text.NumberFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.JOptionPane;
+import javax.swing.table.DefaultTableModel;
 /**
  *
  * @author ameld
@@ -11,12 +32,1778 @@ package latihan.view;
 public class AdminFrame extends javax.swing.JFrame {
     
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(AdminFrame.class.getName());
+    private final NumberFormat currencyFormat =
+            NumberFormat.getCurrencyInstance(
+                    new Locale("id", "ID")
+            );
+    private final List<Integer> menuIdsByRow = new ArrayList<>();
+    private final List<Integer> tableIdsByRow = new ArrayList<>();
 
     /**
      * Creates new form AdminFrame
      */
     public AdminFrame() {
         initComponents();
+        setLocationRelativeTo(null);
+        setupComboBoxes();
+        setupTableListeners();
+        TambahMenuButton.addActionListener(
+                e -> addMenu()
+        );
+
+        UbahMenuButton.addActionListener(
+                e -> updateMenu()
+        );
+
+        HapusMenuButton.addActionListener(
+                e -> deleteMenu()
+        );
+
+        TambahMejaButton.addActionListener(
+                e -> addTable()
+        );
+
+        UbahMejaButton.addActionListener(
+                e -> updateTable()
+        );
+
+        HapusMejaButton.addActionListener(
+                e -> deleteTable()
+        );
+
+        TampilkanLaporanButton.addActionListener(
+                e -> loadReport(
+                        DariDateChooser.getDate(),
+                        SampaiDateChooser.getDate()
+                )
+        );
+
+        SemuaTanggalButton.addActionListener(
+                e -> {
+
+                    DariDateChooser.setDate(null);
+                    SampaiDateChooser.setDate(null);
+
+                    loadReport(null, null);
+                }
+        );
+
+        StatusPesananComboBox.addActionListener(
+                e -> loadOrders()
+        );
+
+        MejaComboBox.addActionListener(e -> {
+            if (MejaComboBox.getSelectedItem() != null) {
+                loadOrders();
+            }
+        });
+
+        loadDashboard();
+        loadOrders();
+        loadMenus();
+        loadTables();
+        loadTableFilter();
+        loadReports();
+    }
+
+    private void setupComboBoxes() {
+        StatusPesananComboBox.setModel(
+                new DefaultComboBoxModel<>(
+                        new String[]{
+                            "Selesai",
+                            "Belum Selesai"
+                        }
+                )
+        );
+
+        KategoriComboBox.setModel(
+                new DefaultComboBoxModel<>(
+                        new String[]{
+                            "Makanan",
+                            "Minuman",
+                            "Snack"
+                        }
+                )
+        );
+
+        StatusMenuComboBox.setModel(
+                new DefaultComboBoxModel<>(
+                        new String[]{
+                            "Tersedia",
+                            "Habis"
+                        }
+                )
+        );
+
+        StatusMejaComboBox.setModel(
+                new DefaultComboBoxModel<>(
+                        new String[]{
+                            "Tersedia",
+                            "Terisi"
+                        }
+                )
+        );
+    }
+
+    private String formatRupiah(double amount) {
+        return currencyFormat.format(amount)
+                .replace("Rp", "Rp ");
+    }
+
+    private void setupTableListeners() {
+        KelolaPesananTabel.addMouseListener(
+                new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        if (e.getClickCount() == 2) {
+                            updateSelectedOrderStatus();
+                        }
+                    }
+                }
+        );
+
+        KelolaMenuTabel.addMouseListener(
+                new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        if (e.getClickCount() == 1) {
+                            loadSelectedMenuToForm();
+                        }
+                    }
+                }
+        );
+
+        KelolaMejaTabel.addMouseListener(
+                new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        if (e.getClickCount() == 1) {
+                            loadSelectedTableToForm();
+                        }
+                    }
+                }
+        );
+    }
+
+    private void loadDashboard() {
+        String totalMejaSql = """
+                SELECT COUNT(*)
+                FROM dining_tables
+                """;
+
+        String mejaTerisiSql = """
+                SELECT COUNT(*)
+                FROM dining_tables
+                WHERE status = 'TERISI'
+                """;
+
+        String totalMenuSql = """
+                SELECT COUNT(*)
+                FROM menus
+                """;
+
+        String transaksiSql = """
+                SELECT COUNT(*)
+                FROM orders
+                """;
+
+        String pendingSql = """
+                SELECT COUNT(*)
+                FROM orders
+                WHERE status <> 'SELESAI'
+                AND status <> 'DIBATALKAN'
+                """;
+
+        String pendapatanSql = """
+                SELECT COALESCE(SUM(total), 0)
+                FROM orders
+                WHERE status = 'SELESAI'
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection()
+        ) {
+            TotalMejaField.setText(
+                    String.valueOf(
+                            executeCount(
+                                    conn,
+                                    totalMejaSql
+                            )
+                    )
+            );
+
+            MejaTerisiField.setText(
+                    String.valueOf(
+                            executeCount(
+                                    conn,
+                                    mejaTerisiSql
+                            )
+                    )
+            );
+
+            TotalMenuField.setText(
+                    String.valueOf(
+                            executeCount(
+                                    conn,
+                                    totalMenuSql
+                            )
+                    )
+            );
+
+            JumlahTransaksiField.setText(
+                    String.valueOf(
+                            executeCount(
+                                    conn,
+                                    transaksiSql
+                            )
+                    )
+            );
+
+            PesananMenungguField.setText(
+                    String.valueOf(
+                            executeCount(
+                                    conn,
+                                    pendingSql
+                            )
+                    )
+            );
+
+            TotalPendapatanField.setText(
+                    formatRupiah(
+                            executeDouble(
+                                    conn,
+                                    pendapatanSql
+                            )
+                    )
+            );
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private int executeCount(
+            Connection conn,
+            String sql
+    ) throws SQLException {
+        try (
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql);
+                ResultSet rs =
+                        stmt.executeQuery()
+        ) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
+    private double executeDouble(
+            Connection conn,
+            String sql
+    ) throws SQLException {
+        try (
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql);
+                ResultSet rs =
+                        stmt.executeQuery()
+        ) {
+            rs.next();
+            return rs.getDouble(1);
+        }
+    }
+
+    private void loadOrders() {
+        DefaultTableModel model =
+                (DefaultTableModel)
+                        KelolaPesananTabel.getModel();
+
+        model.setRowCount(0);
+
+        String selectedStatus =
+                StatusPesananComboBox
+                        .getSelectedItem()
+                        .toString();
+
+        Object selectedMejaItem = MejaComboBox.getSelectedItem();
+        String selectedMeja = selectedMejaItem == null
+                ? "Semua Meja"
+                : selectedMejaItem.toString();
+
+        StringBuilder sql =
+                new StringBuilder("""
+                    SELECT
+                        o.id,
+                        o.order_date,
+                        u.username,
+                        d.table_number,
+                        o.status,
+                        o.total
+                    FROM orders o
+                    JOIN users u
+                        ON u.id = o.user_id
+                    JOIN dining_tables d
+                        ON d.id = o.table_id
+                    WHERE 1 = 1
+                    """);
+
+        List<Object> params =
+                new ArrayList<>();
+
+        if ("Belum Selesai".equals(
+                selectedStatus
+        )) {
+            sql.append("""
+                    AND o.status IN (
+                        'MENUNGGU',
+                        'DIPROSES',
+                        'SIAP DIANTAR'
+                    )
+                    """);
+
+        } else if ("Selesai".equals(
+                selectedStatus
+        )) {
+            sql.append("""
+                    AND o.status = 'SELESAI'
+                    """);
+        }
+
+        if (!"Semua Meja".equals(
+                selectedMeja
+        )) {
+            sql.append(
+                    " AND d.table_number = ? "
+            );
+            params.add(selectedMeja);
+        }
+
+        sql.append(
+                " ORDER BY o.id DESC"
+        );
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(
+                                sql.toString()
+                        )
+        ) {
+            for (int i = 0;
+                i < params.size();
+                i++) {
+                stmt.setObject(
+                        i + 1,
+                        params.get(i)
+                );
+            }
+
+            try (
+                    ResultSet rs =
+                            stmt.executeQuery()
+            ) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{
+                        rs.getInt("id"),
+                        rs.getTimestamp(
+                                "order_date"
+                        ),
+                        rs.getString("username"),
+                        rs.getString(
+                                "table_number"
+                        ),
+                        convertOrderStatus(
+                                rs.getString("status")
+                        ),
+                        formatRupiah(
+                                rs.getDouble("total")
+                        )
+                    });
+                }
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private String convertOrderStatus(
+            String status
+    ) {
+        return switch (status) {
+            case "MENUNGGU" ->
+                    "Menunggu";
+
+            case "DIPROSES" ->
+                    "Diproses";
+
+            case "SIAP DIANTAR" ->
+                    "Siap Diantar";
+
+            case "SELESAI" ->
+                    "Selesai";
+
+            case "DIBATALKAN" ->
+                    "Dibatalkan";
+
+            default ->
+                    status;
+        };
+    }
+
+    private void updateSelectedOrderStatus() {
+        int selectedRow =
+                KelolaPesananTabel.getSelectedRow();
+
+        if (selectedRow == -1) {
+            return;
+        }
+
+        int orderId =
+                Integer.parseInt(
+                        KelolaPesananTabel
+                                .getValueAt(
+                                        selectedRow,
+                                        0
+                                )
+                                .toString()
+                );
+
+        String currentStatus =
+                KelolaPesananTabel
+                        .getValueAt(
+                                selectedRow,
+                                4
+                        )
+                        .toString();
+
+        String nextStatus =
+                getNextStatus(currentStatus);
+
+        if (nextStatus == null) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Pesanan ini sudah selesai.",
+                    "Status Pesanan",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+            return;
+        }
+
+        int confirm =
+                JOptionPane.showConfirmDialog(
+                        this,
+                        "Ubah status pesanan #"
+                        + orderId
+                        + " menjadi "
+                        + nextStatus
+                        + "?",
+                        "Konfirmasi",
+                        JOptionPane.YES_NO_OPTION
+                );
+
+        if (confirm !=
+                JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        String dbStatus =
+                convertStatusToDatabase(
+                        nextStatus
+                );
+
+        String sql = """
+                UPDATE orders
+                SET status = ?
+                WHERE id = ?
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+
+            stmt.setString(
+                    1,
+                    dbStatus
+            );
+
+            stmt.setInt(
+                    2,
+                    orderId
+            );
+
+            stmt.executeUpdate();
+
+            /*
+            * Kalau pesanan selesai,
+            * meja dikembalikan menjadi TERSEDIA.
+            */
+            if ("SELESAI".equals(
+                    dbStatus
+            )) {
+                releaseOrderTable(
+                        conn,
+                        orderId
+                );
+            }
+
+            loadOrders();
+            loadDashboard();
+            loadTables();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Status pesanan berhasil diperbarui.",
+                    "Berhasil",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private String getNextStatus(
+            String status
+    ) {
+        return switch (status) {
+            case "Menunggu" ->
+                    "Diproses";
+
+            case "Diproses" ->
+                    "Siap Diantar";
+
+            case "Siap Diantar" ->
+                    "Selesai";
+
+            default ->
+                    null;
+        };
+    }
+
+    private String convertStatusToDatabase(
+            String status
+    ) {
+        return switch (status) {
+            case "Menunggu" ->
+                    "MENUNGGU";
+
+            case "Diproses" ->
+                    "DIPROSES";
+
+            case "Siap Diantar" ->
+                    "SIAP DIANTAR";
+
+            case "Selesai" ->
+                    "SELESAI";
+
+            default ->
+                    status;
+        };
+    }
+
+    private void releaseOrderTable(
+            Connection conn,
+            int orderId
+    ) throws SQLException {
+        String sql = """
+                UPDATE dining_tables
+                SET status = 'TERSEDIA'
+                WHERE id = (
+                    SELECT table_id
+                    FROM orders
+                    WHERE id = ?
+                )
+                """;
+
+        try (
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+            stmt.setInt(
+                    1,
+                    orderId
+            );
+            stmt.executeUpdate();
+        }
+    }
+    
+    private void loadTableFilter() {
+        MejaComboBox.removeAllItems();
+        MejaComboBox.addItem(
+                "Semua Meja"
+        );
+
+        String sql = """
+                SELECT table_number
+                FROM dining_tables
+                ORDER BY table_number
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql);
+                ResultSet rs =
+                        stmt.executeQuery()
+        ) {
+            while (rs.next()) {
+                MejaComboBox.addItem(
+                        rs.getString(
+                                "table_number"
+                        )
+                );
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private void loadMenus() {
+        DefaultTableModel model =
+                (DefaultTableModel)
+                        KelolaMenuTabel.getModel();
+
+        model.setRowCount(0);
+        menuIdsByRow.clear();
+
+        String sql = """
+                SELECT
+                    id,
+                    name,
+                    category,
+                    price,
+                    stock,
+                    status
+                FROM menus
+                ORDER BY id
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql);
+                ResultSet rs =
+                        stmt.executeQuery()
+        ) {
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String status = rs.getString("status");
+                menuIdsByRow.add(id);
+
+                model.addRow(new Object[]{
+                    rs.getString("name"),
+                    rs.getString("category"),
+                    rs.getString("category"),
+                    formatRupiah(
+                            rs.getDouble("price")
+                    ),
+                    rs.getInt("stock"),
+                    convertMenuStatus(
+                            status
+                    )
+                });
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private String convertMenuStatus(String status) {
+        if ("TERSEDIA".equalsIgnoreCase(status)) {
+                return "Tersedia";
+        }
+            return "Habis";
+    }
+
+    private void loadSelectedMenuToForm() {
+        int row =
+                KelolaMenuTabel
+                        .getSelectedRow();
+
+        if (row == -1
+                || row >= menuIdsByRow.size()) {
+            return;
+        }
+
+        int menuId =
+                menuIdsByRow.get(row);
+
+        String sql = """
+                SELECT
+                    name,
+                    category,
+                    price,
+                    stock,
+                    status,
+                    description
+                FROM menus
+                WHERE id = ?
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+            stmt.setInt(
+                    1,
+                    menuId
+            );
+            try (
+                    ResultSet rs =
+                            stmt.executeQuery()
+            ) {
+                if (rs.next()) {
+                    NamaMenuField.setText(
+                            rs.getString("name")
+                    );
+
+                    KategoriComboBox.setSelectedItem(
+                            rs.getString("category")
+                    );
+
+                    HargaField.setText(
+                            String.valueOf(
+                                    rs.getDouble("price")
+                            )
+                    );
+
+                    StokField.setText(
+                            String.valueOf(
+                                    rs.getInt("stock")
+                            )
+                    );
+
+                    StatusMenuComboBox.setSelectedItem(
+                            convertMenuStatus(
+                                    rs.getString("status")
+                            )
+                    );
+
+                    DeskripsiField.setText(
+                            rs.getString("description")
+                                    == null
+                                    ? ""
+                                    : rs.getString(
+                                            "description"
+                                    )
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private MenuFormData getMenuFormData() {
+        String name =
+                NamaMenuField.getText().trim();
+
+        String category =
+                KategoriComboBox
+                        .getSelectedItem()
+                        .toString();
+
+        String priceText =
+                HargaField.getText().trim();
+
+        String stockText =
+                StokField.getText().trim();
+
+        String status =
+                StatusMenuComboBox
+                        .getSelectedItem()
+                        .toString();
+
+        String description =
+                DeskripsiField.getText().trim();
+
+        if (name.isEmpty()
+                || priceText.isEmpty()
+                || stockText.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Nama, harga, dan stok wajib diisi.",
+                    "Menu",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return null;
+        }
+
+        double price;
+        int stock;
+
+        try {
+            price =
+                    Double.parseDouble(
+                            priceText
+                    );
+
+            stock =
+                    Integer.parseInt(
+                            stockText
+                    );
+
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Harga dan stok harus berupa angka.",
+                    "Menu",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return null;
+        }
+
+        if (price < 0) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Harga tidak boleh negatif.",
+                    "Menu",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return null;
+        }
+
+        if (stock < 0) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Stok tidak boleh negatif.",
+                    "Menu",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return null;
+        }
+
+        String dbStatus =
+                "Tersedia".equalsIgnoreCase(
+                        status
+                )
+                ? "TERSEDIA"
+                : "HABIS";
+
+        return new MenuFormData(
+                name,
+                category,
+                price,
+                stock,
+                dbStatus,
+                description
+        );
+    }
+    
+    private static class MenuFormData {
+        String name;
+        String category;
+        double price;
+        int stock;
+        String status;
+        String description;
+
+        MenuFormData(
+                String name,
+                String category,
+                double price,
+                int stock,
+                String status,
+                String description
+        ) {
+
+            this.name = name;
+            this.category = category;
+            this.price = price;
+            this.stock = stock;
+            this.status = status;
+            this.description = description;
+        }
+    }
+
+    private void addMenu() {
+        MenuFormData data =
+                getMenuFormData();
+
+        if (data == null) {
+            return;
+        }
+
+        String sql = """
+                INSERT INTO menus
+                    (
+                        name,
+                        category,
+                        price,
+                        stock,
+                        status,
+                        description
+                    )
+                VALUES
+                    (?, ?, ?, ?, ?, ?)
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+
+            stmt.setString(
+                    1,
+                    data.name
+            );
+
+            stmt.setString(
+                    2,
+                    data.category
+            );
+
+            stmt.setDouble(
+                    3,
+                    data.price
+            );
+
+            stmt.setInt(
+                    4,
+                    data.stock
+            );
+
+            stmt.setString(
+                    5,
+                    data.status
+            );
+
+            stmt.setString(
+                    6,
+                    data.description
+            );
+
+            stmt.executeUpdate();
+
+            clearMenuForm();
+            loadMenus();
+            loadDashboard();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Menu berhasil ditambahkan.",
+                    "Menu",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+        } catch (SQLException e) {
+
+            showDatabaseError(e);
+        }
+    }
+
+    private void updateMenu() {
+        int row =
+                KelolaMenuTabel
+                        .getSelectedRow();
+
+        if (row == -1
+                || row >= menuIdsByRow.size()) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Pilih menu yang ingin diubah.",
+                    "Menu",
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        MenuFormData data =
+                getMenuFormData();
+
+        if (data == null) {
+            return;
+        }
+
+        int menuId =
+                menuIdsByRow.get(row);
+
+        String sql = """
+                UPDATE menus
+                SET
+                    name = ?,
+                    category = ?,
+                    price = ?,
+                    stock = ?,
+                    status = ?,
+                    description = ?
+                WHERE id = ?
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+
+            stmt.setString(
+                    1,
+                    data.name
+            );
+
+            stmt.setString(
+                    2,
+                    data.category
+            );
+
+            stmt.setDouble(
+                    3,
+                    data.price
+            );
+
+            stmt.setInt(
+                    4,
+                    data.stock
+            );
+
+            stmt.setString(
+                    5,
+                    data.status
+            );
+
+            stmt.setString(
+                    6,
+                    data.description
+            );
+
+            stmt.setInt(
+                    7,
+                    menuId
+            );
+
+            stmt.executeUpdate();
+
+            clearMenuForm();
+            loadMenus();
+            loadDashboard();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Menu berhasil diubah.",
+                    "Menu",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+        } catch (SQLException e) {
+
+            showDatabaseError(e);
+        }
+    }
+
+    private void deleteMenu() {
+        int row =
+                KelolaMenuTabel
+                        .getSelectedRow();
+
+        if (row == -1
+                || row >= menuIdsByRow.size()) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Pilih menu yang ingin dihapus.",
+                    "Menu",
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        int menuId =
+                menuIdsByRow.get(row);
+
+        String menuName =
+                KelolaMenuTabel
+                        .getValueAt(
+                                row,
+                                0
+                        )
+                        .toString();
+
+        int confirm =
+                JOptionPane.showConfirmDialog(
+                        this,
+                        "Hapus menu "
+                        + menuName
+                        + "?",
+                        "Konfirmasi",
+                        JOptionPane.YES_NO_OPTION
+                );
+
+        if (confirm !=
+                JOptionPane.YES_OPTION) {
+
+            return;
+        }
+
+        String sql = """
+                DELETE FROM menus
+                WHERE id = ?
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+
+            stmt.setInt(
+                    1,
+                    menuId
+            );
+
+            stmt.executeUpdate();
+
+            clearMenuForm();
+            loadMenus();
+            loadDashboard();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Menu berhasil dihapus.",
+                    "Menu",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Menu tidak dapat dihapus.\n"
+                    + "Kemungkinan menu tersebut sudah digunakan dalam transaksi.",
+                    "Menu",
+                    JOptionPane.WARNING_MESSAGE
+            );
+        }
+    }
+
+    private void clearMenuForm() {
+        NamaMenuField.setText("");
+        HargaField.setText("");
+        StokField.setText("");
+        DeskripsiField.setText("");
+
+        KategoriComboBox.setSelectedIndex(0);
+        StatusMenuComboBox.setSelectedIndex(0);
+
+        KelolaMenuTabel.clearSelection();
+    }
+
+    private void loadTables() {
+        DefaultTableModel model =
+                (DefaultTableModel)
+                        KelolaMejaTabel.getModel();
+
+        model.setRowCount(0);
+
+        tableIdsByRow.clear();
+
+        String sql = """
+                SELECT
+                    id,
+                    table_number,
+                    capacity,
+                    status
+                FROM dining_tables
+                ORDER BY id
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql);
+                ResultSet rs =
+                        stmt.executeQuery()
+        ) {
+
+            while (rs.next()) {
+
+                int id =
+                        rs.getInt("id");
+
+                tableIdsByRow.add(id);
+
+                model.addRow(new Object[]{
+                    rs.getString(
+                            "table_number"
+                    ),
+                    rs.getInt(
+                            "capacity"
+                    ),
+                    convertTableStatus(
+                            rs.getString(
+                                    "status"
+                            )
+                    )
+                });
+            }
+
+        } catch (SQLException e) {
+
+            showDatabaseError(e);
+        }
+    }
+
+    private String convertTableStatus(
+            String status
+    ) {
+        if ("TERSEDIA".equalsIgnoreCase(
+                status
+        )) {
+
+            return "Tersedia";
+        }
+
+        return "Terisi";
+    }
+
+    private void loadSelectedTableToForm() {
+        int row =
+                KelolaMejaTabel
+                        .getSelectedRow();
+
+        if (row == -1
+                || row >= tableIdsByRow.size()) {
+
+            return;
+        }
+
+        NomorMejaField.setText(
+                KelolaMejaTabel
+                        .getValueAt(
+                                row,
+                                0
+                        )
+                        .toString()
+        );
+
+        KapasitasField.setText(
+                KelolaMejaTabel
+                        .getValueAt(
+                                row,
+                                1
+                        )
+                        .toString()
+        );
+
+        StatusMejaComboBox.setSelectedItem(
+                KelolaMejaTabel
+                        .getValueAt(
+                                row,
+                                2
+                        )
+                        .toString()
+        );
+    }
+
+    private void addTable() {
+        String number =
+                NomorMejaField
+                        .getText()
+                        .trim();
+
+        String capacityText =
+                KapasitasField
+                        .getText()
+                        .trim();
+
+        if (number.isEmpty()
+                || capacityText.isEmpty()) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Nomor meja dan kapasitas wajib diisi.",
+                    "Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        int capacity;
+
+        try {
+
+            capacity =
+                    Integer.parseInt(
+                            capacityText
+                    );
+
+        } catch (NumberFormatException e) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Kapasitas harus berupa angka.",
+                    "Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        if (capacity <= 0) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Kapasitas harus lebih dari 0.",
+                    "Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        String sql = """
+                INSERT INTO dining_tables
+                    (
+                        table_number,
+                        capacity,
+                        status
+                    )
+                VALUES
+                    (?, ?, 'TERSEDIA')
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+
+            stmt.setString(
+                    1,
+                    number
+            );
+
+            stmt.setInt(
+                    2,
+                    capacity
+            );
+
+            stmt.executeUpdate();
+
+            clearTableForm();
+
+            loadTables();
+            loadTableFilter();
+            loadDashboard();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Meja berhasil ditambahkan.",
+                    "Meja",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+        } catch (SQLException e) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Nomor meja sudah digunakan.",
+                    "Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+        }
+    }
+
+    private void updateTable() {
+        int row =
+                KelolaMejaTabel
+                        .getSelectedRow();
+
+        if (row == -1
+                || row >= tableIdsByRow.size()) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Pilih meja yang ingin diubah.",
+                    "Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        String number =
+                NomorMejaField
+                        .getText()
+                        .trim();
+
+        String capacityText =
+                KapasitasField
+                        .getText()
+                        .trim();
+
+        if (number.isEmpty()
+                || capacityText.isEmpty()) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Nomor meja dan kapasitas wajib diisi.",
+                    "Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        int capacity;
+
+        try {
+
+            capacity =
+                    Integer.parseInt(
+                            capacityText
+                    );
+
+        } catch (NumberFormatException e) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Kapasitas harus berupa angka.",
+                    "Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        int tableId =
+                tableIdsByRow.get(row);
+
+        String status =
+                StatusMejaComboBox
+                        .getSelectedItem()
+                        .toString();
+
+        String dbStatus =
+                "Tersedia".equalsIgnoreCase(
+                        status
+                )
+                ? "TERSEDIA"
+                : "TERISI";
+
+        String sql = """
+                UPDATE dining_tables
+                SET
+                    table_number = ?,
+                    capacity = ?,
+                    status = ?
+                WHERE id = ?
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+
+            stmt.setString(
+                    1,
+                    number
+            );
+
+            stmt.setInt(
+                    2,
+                    capacity
+            );
+
+            stmt.setString(
+                    3,
+                    dbStatus
+            );
+
+            stmt.setInt(
+                    4,
+                    tableId
+            );
+
+            stmt.executeUpdate();
+
+            clearTableForm();
+
+            loadTables();
+            loadTableFilter();
+            loadDashboard();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Meja berhasil diubah.",
+                    "Meja",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+        } catch (SQLException e) {
+
+            showDatabaseError(e);
+        }
+    }
+
+    private void deleteTable() {
+        int row =
+                KelolaMejaTabel
+                        .getSelectedRow();
+
+        if (row == -1
+                || row >= tableIdsByRow.size()) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Pilih meja yang ingin dihapus.",
+                    "Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            return;
+        }
+
+        int tableId =
+                tableIdsByRow.get(row);
+
+        String tableNumber =
+                KelolaMejaTabel
+                        .getValueAt(
+                                row,
+                                0
+                        )
+                        .toString();
+
+        int confirm =
+                JOptionPane.showConfirmDialog(
+                        this,
+                        "Hapus meja "
+                        + tableNumber
+                        + "?",
+                        "Konfirmasi",
+                        JOptionPane.YES_NO_OPTION
+                );
+
+        if (confirm !=
+                JOptionPane.YES_OPTION) {
+
+            return;
+        }
+
+        String sql = """
+                DELETE FROM dining_tables
+                WHERE id = ?
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+
+            stmt.setInt(
+                    1,
+                    tableId
+            );
+
+            stmt.executeUpdate();
+
+            clearTableForm();
+
+            loadTables();
+            loadTableFilter();
+            loadDashboard();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Meja berhasil dihapus.",
+                    "Meja",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+        } catch (SQLException e) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Meja tidak dapat dihapus karena sudah digunakan dalam transaksi.",
+                    "Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+        }
+    }
+
+    private void clearTableForm() {
+        NomorMejaField.setText("");
+        KapasitasField.setText("");
+
+        StatusMejaComboBox.setSelectedIndex(0);
+
+        KelolaMejaTabel.clearSelection();
+    }
+
+    private void loadReports() {
+        loadReport(
+                DariDateChooser.getDate(),
+                SampaiDateChooser.getDate()
+        );
+    }
+
+    private void loadReport(
+            java.util.Date from,
+            java.util.Date to
+    ) {
+        DefaultTableModel model =
+                (DefaultTableModel)
+                        LaporanPenjualanTabel
+                                .getModel();
+
+        model.setRowCount(0);
+
+        StringBuilder sql =
+                new StringBuilder("""
+                    SELECT
+                        o.id,
+                        o.order_date,
+                        u.username,
+                        d.table_number,
+                        o.status,
+                        o.total
+                    FROM orders o
+                    JOIN users u
+                        ON u.id = o.user_id
+                    JOIN dining_tables d
+                        ON d.id = o.table_id
+                    WHERE 1 = 1
+                    """);
+
+        List<java.util.Date> params =
+                new ArrayList<>();
+
+        if (from != null) {
+
+            sql.append(
+                    " AND DATE(o.order_date) >= DATE(?) "
+            );
+
+            params.add(from);
+        }
+
+        if (to != null) {
+
+            sql.append(
+                    " AND DATE(o.order_date) <= DATE(?) "
+            );
+
+            params.add(to);
+        }
+
+        sql.append(
+                " ORDER BY o.order_date DESC"
+        );
+
+        double totalPendapatan = 0;
+
+        int totalTransaksi = 0;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(
+                                sql.toString()
+                        )
+        ) {
+
+            for (int i = 0;
+                i < params.size();
+                i++) {
+
+                stmt.setDate(
+                        i + 1,
+                        new java.sql.Date(
+                                params.get(i)
+                                        .getTime()
+                        )
+                );
+            }
+
+            try (
+                    ResultSet rs =
+                            stmt.executeQuery()
+            ) {
+
+                while (rs.next()) {
+
+                    double total =
+                            rs.getDouble(
+                                    "total"
+                            );
+
+                    totalPendapatan += total;
+
+                    totalTransaksi++;
+
+                    model.addRow(new Object[]{
+                        rs.getInt("id"),
+                        rs.getTimestamp(
+                                "order_date"
+                        ),
+                        rs.getString(
+                                "username"
+                        ),
+                        rs.getString(
+                                "table_number"
+                        ),
+                        convertOrderStatus(
+                                rs.getString(
+                                        "status"
+                                )
+                        ),
+                        formatRupiah(
+                                total
+                        )
+                    });
+                }
+            }
+
+            LaporanPendapatanField.setText(
+                    formatRupiah(
+                            totalPendapatan
+                    )
+            );
+
+            LaporanTransaksiField.setText(
+                    String.valueOf(
+                            totalTransaksi
+                    )
+            );
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private void showDatabaseError(SQLException e) {
+        JOptionPane.showMessageDialog(
+            this,
+            "Terjadi kesalahan database:\n" + e.getMessage(),
+            "Database Error",
+            JOptionPane.ERROR_MESSAGE
+        );
     }
 
     /**
@@ -28,105 +1815,105 @@ public class AdminFrame extends javax.swing.JFrame {
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
 
-        jTabbedPane1 = new javax.swing.JTabbedPane();
+        AdminPanel = new javax.swing.JTabbedPane();
         jPanel1 = new javax.swing.JPanel();
         jPanel9 = new javax.swing.JPanel();
         jPanel10 = new javax.swing.JPanel();
         jLabel13 = new javax.swing.JLabel();
-        jTextField2 = new javax.swing.JTextField();
+        TotalMejaField = new javax.swing.JTextField();
         jLabel3 = new javax.swing.JLabel();
         jPanel15 = new javax.swing.JPanel();
         jPanel16 = new javax.swing.JPanel();
         jLabel16 = new javax.swing.JLabel();
-        jTextField6 = new javax.swing.JTextField();
+        TotalPendapatanField = new javax.swing.JTextField();
         jLabel4 = new javax.swing.JLabel();
         jPanel5 = new javax.swing.JPanel();
         jPanel18 = new javax.swing.JPanel();
         jLabel5 = new javax.swing.JLabel();
-        jTextField1 = new javax.swing.JTextField();
+        TotalMenuField = new javax.swing.JTextField();
         jPanel11 = new javax.swing.JPanel();
         jPanel12 = new javax.swing.JPanel();
         jLabel14 = new javax.swing.JLabel();
-        jTextField5 = new javax.swing.JTextField();
+        JumlahTransaksiField = new javax.swing.JTextField();
         jPanel19 = new javax.swing.JPanel();
         jPanel6 = new javax.swing.JPanel();
         jLabel6 = new javax.swing.JLabel();
-        jTextField4 = new javax.swing.JTextField();
+        PesananMenungguField = new javax.swing.JTextField();
         jPanel13 = new javax.swing.JPanel();
         jPanel14 = new javax.swing.JPanel();
         jLabel15 = new javax.swing.JLabel();
-        jTextField3 = new javax.swing.JTextField();
+        MejaTerisiField = new javax.swing.JTextField();
         jPanel2 = new javax.swing.JPanel();
         jLabel7 = new javax.swing.JLabel();
         jLabel8 = new javax.swing.JLabel();
-        jComboBox1 = new javax.swing.JComboBox<>();
+        StatusPesananComboBox = new javax.swing.JComboBox<>();
         jLabel9 = new javax.swing.JLabel();
-        jComboBox2 = new javax.swing.JComboBox<>();
-        jButton5 = new javax.swing.JButton();
+        MejaComboBox = new javax.swing.JComboBox<>();
+        MuatUlangButtons = new javax.swing.JButton();
         jScrollPane1 = new javax.swing.JScrollPane();
-        jTable1 = new javax.swing.JTable();
+        KelolaPesananTabel = new javax.swing.JTable();
         jLabel10 = new javax.swing.JLabel();
         jPanel23 = new javax.swing.JPanel();
         jLabel17 = new javax.swing.JLabel();
         jLabel18 = new javax.swing.JLabel();
         jScrollPane5 = new javax.swing.JScrollPane();
-        jTable5 = new javax.swing.JTable();
+        KelolaMenuTabel = new javax.swing.JTable();
         jPanel8 = new javax.swing.JPanel();
         jLabel19 = new javax.swing.JLabel();
-        jTextField7 = new javax.swing.JTextField();
+        NamaMenuField = new javax.swing.JTextField();
         jLabel20 = new javax.swing.JLabel();
-        jComboBox3 = new javax.swing.JComboBox<>();
+        KategoriComboBox = new javax.swing.JComboBox<>();
         jLabel21 = new javax.swing.JLabel();
-        jTextField8 = new javax.swing.JTextField();
+        HargaField = new javax.swing.JTextField();
         jLabel22 = new javax.swing.JLabel();
-        jTextField9 = new javax.swing.JTextField();
+        StokField = new javax.swing.JTextField();
         jLabel23 = new javax.swing.JLabel();
-        jComboBox4 = new javax.swing.JComboBox<>();
+        StatusMenuComboBox = new javax.swing.JComboBox<>();
         jLabel24 = new javax.swing.JLabel();
-        jTextField10 = new javax.swing.JTextField();
-        jButton1 = new javax.swing.JButton();
-        jButton2 = new javax.swing.JButton();
-        jButton3 = new javax.swing.JButton();
+        DeskripsiField = new javax.swing.JTextField();
+        TambahMenuButton = new javax.swing.JButton();
+        UbahMenuButton = new javax.swing.JButton();
+        HapusMenuButton = new javax.swing.JButton();
         jPanel3 = new javax.swing.JPanel();
         jScrollPane3 = new javax.swing.JScrollPane();
-        jTable3 = new javax.swing.JTable();
+        KelolaMejaTabel = new javax.swing.JTable();
         jLabel33 = new javax.swing.JLabel();
         jLabel34 = new javax.swing.JLabel();
         jPanel24 = new javax.swing.JPanel();
         jLabel35 = new javax.swing.JLabel();
         jLabel36 = new javax.swing.JLabel();
-        jTextField17 = new javax.swing.JTextField();
+        KapasitasField = new javax.swing.JTextField();
         jLabel37 = new javax.swing.JLabel();
-        jComboBox7 = new javax.swing.JComboBox<>();
-        jButton10 = new javax.swing.JButton();
-        jButton11 = new javax.swing.JButton();
-        jButton12 = new javax.swing.JButton();
-        jTextField18 = new javax.swing.JTextField();
+        StatusMejaComboBox = new javax.swing.JComboBox<>();
+        TambahMejaButton = new javax.swing.JButton();
+        UbahMejaButton = new javax.swing.JButton();
+        HapusMejaButton = new javax.swing.JButton();
+        NomorMejaField = new javax.swing.JTextField();
         jPanel7 = new javax.swing.JPanel();
         jPanel20 = new javax.swing.JPanel();
         jPanel21 = new javax.swing.JPanel();
         jLabel29 = new javax.swing.JLabel();
-        jTextField15 = new javax.swing.JTextField();
+        LaporanPendapatanField = new javax.swing.JTextField();
         jLabel11 = new javax.swing.JLabel();
-        jFormattedTextField1 = new javax.swing.JFormattedTextField();
         jLabel12 = new javax.swing.JLabel();
-        jFormattedTextField2 = new javax.swing.JFormattedTextField();
-        jButton8 = new javax.swing.JButton();
-        jButton9 = new javax.swing.JButton();
+        TampilkanLaporanButton = new javax.swing.JButton();
+        SemuaTanggalButton = new javax.swing.JButton();
         jPanel22 = new javax.swing.JPanel();
         jPanel4 = new javax.swing.JPanel();
         jLabel30 = new javax.swing.JLabel();
-        jTextField16 = new javax.swing.JTextField();
+        LaporanTransaksiField = new javax.swing.JTextField();
         jLabel31 = new javax.swing.JLabel();
         jLabel32 = new javax.swing.JLabel();
         jScrollPane2 = new javax.swing.JScrollPane();
-        jTable2 = new javax.swing.JTable();
+        LaporanPenjualanTabel = new javax.swing.JTable();
+        DariDateChooser = new com.toedter.calendar.JDateChooser();
+        SampaiDateChooser = new com.toedter.calendar.JDateChooser();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        jTabbedPane1.setBackground(new java.awt.Color(47, 75, 58));
-        jTabbedPane1.setForeground(new java.awt.Color(255, 255, 255));
-        jTabbedPane1.setPreferredSize(new java.awt.Dimension(1000, 500));
+        AdminPanel.setBackground(new java.awt.Color(47, 75, 58));
+        AdminPanel.setForeground(new java.awt.Color(255, 255, 255));
+        AdminPanel.setPreferredSize(new java.awt.Dimension(1000, 500));
 
         jPanel1.setBackground(new java.awt.Color(255, 251, 239));
 
@@ -151,11 +1938,11 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel13.setForeground(new java.awt.Color(123, 111, 96));
         jLabel13.setText("Total Meja");
 
-        jTextField2.setEditable(false);
-        jTextField2.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField2.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField2.setText("-");
-        jTextField2.setPreferredSize(new java.awt.Dimension(65, 20));
+        TotalMejaField.setEditable(false);
+        TotalMejaField.setBackground(new java.awt.Color(255, 255, 255));
+        TotalMejaField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        TotalMejaField.setText("-");
+        TotalMejaField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel9Layout = new javax.swing.GroupLayout(jPanel9);
         jPanel9.setLayout(jPanel9Layout);
@@ -166,7 +1953,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel9Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel13)
-                    .addComponent(jTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(TotalMejaField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addGap(0, 0, Short.MAX_VALUE))
         );
         jPanel9Layout.setVerticalGroup(
@@ -176,7 +1963,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel13)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addComponent(TotalMejaField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
         jLabel3.setFont(new java.awt.Font("SansSerif", 1, 24)); // NOI18N
@@ -204,11 +1991,11 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel16.setForeground(new java.awt.Color(123, 111, 96));
         jLabel16.setText("Total Pendapatan");
 
-        jTextField6.setEditable(false);
-        jTextField6.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField6.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField6.setText("-");
-        jTextField6.setPreferredSize(new java.awt.Dimension(65, 20));
+        TotalPendapatanField.setEditable(false);
+        TotalPendapatanField.setBackground(new java.awt.Color(255, 255, 255));
+        TotalPendapatanField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        TotalPendapatanField.setText("-");
+        TotalPendapatanField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel15Layout = new javax.swing.GroupLayout(jPanel15);
         jPanel15.setLayout(jPanel15Layout);
@@ -219,7 +2006,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel15Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel16)
-                    .addComponent(jTextField6, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(TotalPendapatanField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addGap(0, 90, Short.MAX_VALUE))
         );
         jPanel15Layout.setVerticalGroup(
@@ -229,7 +2016,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel16)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField6, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addComponent(TotalPendapatanField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
         jLabel4.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
@@ -257,11 +2044,11 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel5.setForeground(new java.awt.Color(123, 111, 96));
         jLabel5.setText("Total Menu");
 
-        jTextField1.setEditable(false);
-        jTextField1.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField1.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField1.setText("-");
-        jTextField1.setPreferredSize(new java.awt.Dimension(65, 20));
+        TotalMenuField.setEditable(false);
+        TotalMenuField.setBackground(new java.awt.Color(255, 255, 255));
+        TotalMenuField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        TotalMenuField.setText("-");
+        TotalMenuField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel5Layout = new javax.swing.GroupLayout(jPanel5);
         jPanel5.setLayout(jPanel5Layout);
@@ -272,7 +2059,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                     .addComponent(jLabel5, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jTextField1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addComponent(TotalMenuField, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                 .addGap(0, 0, Short.MAX_VALUE))
         );
         jPanel5Layout.setVerticalGroup(
@@ -284,7 +2071,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel5)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(TotalMenuField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
@@ -309,11 +2096,11 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel14.setForeground(new java.awt.Color(123, 111, 96));
         jLabel14.setText("Jumlah Transaksi");
 
-        jTextField5.setEditable(false);
-        jTextField5.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField5.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField5.setText("-");
-        jTextField5.setPreferredSize(new java.awt.Dimension(65, 20));
+        JumlahTransaksiField.setEditable(false);
+        JumlahTransaksiField.setBackground(new java.awt.Color(255, 255, 255));
+        JumlahTransaksiField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        JumlahTransaksiField.setText("-");
+        JumlahTransaksiField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel11Layout = new javax.swing.GroupLayout(jPanel11);
         jPanel11.setLayout(jPanel11Layout);
@@ -324,7 +2111,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel11Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel14)
-                    .addComponent(jTextField5, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(JumlahTransaksiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addGap(0, 89, Short.MAX_VALUE))
         );
         jPanel11Layout.setVerticalGroup(
@@ -334,7 +2121,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel14)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField5, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addComponent(JumlahTransaksiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
         jPanel19.setBackground(new java.awt.Color(255, 255, 255));
@@ -358,11 +2145,11 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel6.setForeground(new java.awt.Color(123, 111, 96));
         jLabel6.setText("Pesanan Menunggu");
 
-        jTextField4.setEditable(false);
-        jTextField4.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField4.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField4.setText("-");
-        jTextField4.setPreferredSize(new java.awt.Dimension(65, 20));
+        PesananMenungguField.setEditable(false);
+        PesananMenungguField.setBackground(new java.awt.Color(255, 255, 255));
+        PesananMenungguField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        PesananMenungguField.setText("-");
+        PesananMenungguField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel19Layout = new javax.swing.GroupLayout(jPanel19);
         jPanel19.setLayout(jPanel19Layout);
@@ -373,7 +2160,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel19Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel6)
-                    .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(PesananMenungguField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addGap(0, 78, Short.MAX_VALUE))
         );
         jPanel19Layout.setVerticalGroup(
@@ -383,7 +2170,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel6)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addComponent(PesananMenungguField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
         jPanel13.setBackground(new java.awt.Color(255, 255, 255));
@@ -407,11 +2194,11 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel15.setForeground(new java.awt.Color(123, 111, 96));
         jLabel15.setText("Meja Terisi");
 
-        jTextField3.setEditable(false);
-        jTextField3.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField3.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField3.setText("-");
-        jTextField3.setPreferredSize(new java.awt.Dimension(65, 20));
+        MejaTerisiField.setEditable(false);
+        MejaTerisiField.setBackground(new java.awt.Color(255, 255, 255));
+        MejaTerisiField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        MejaTerisiField.setText("-");
+        MejaTerisiField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel13Layout = new javax.swing.GroupLayout(jPanel13);
         jPanel13.setLayout(jPanel13Layout);
@@ -422,7 +2209,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel13Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel15)
-                    .addComponent(jTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(MejaTerisiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addGap(0, 0, Short.MAX_VALUE))
         );
         jPanel13Layout.setVerticalGroup(
@@ -432,7 +2219,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel15)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addComponent(MejaTerisiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
@@ -482,7 +2269,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap(163, Short.MAX_VALUE))
         );
 
-        jTabbedPane1.addTab("Beranda", jPanel1);
+        AdminPanel.addTab("Beranda", jPanel1);
 
         jPanel2.setBackground(new java.awt.Color(255, 251, 239));
         jPanel2.setPreferredSize(new java.awt.Dimension(1000, 500));
@@ -495,23 +2282,24 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel8.setForeground(new java.awt.Color(51, 41, 31));
         jLabel8.setText("Status");
 
-        jComboBox1.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
-        jComboBox1.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Belum Selesai", "Selesai" }));
+        StatusPesananComboBox.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
+        StatusPesananComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Menunggu", "Diproses", "Siap Diantar", "Selesai", "Dibatalkan" }));
+        StatusPesananComboBox.setSelectedItem(StatusPesananComboBox);
 
         jLabel9.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         jLabel9.setForeground(new java.awt.Color(51, 41, 31));
         jLabel9.setText("Meja");
 
-        jComboBox2.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
-        jComboBox2.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Semua Meja", "K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08", "K09", "K10" }));
+        MejaComboBox.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
+        MejaComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Semua Meja", "K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08", "K09", "K10" }));
 
-        jButton5.setBackground(new java.awt.Color(233, 220, 192));
-        jButton5.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton5.setForeground(new java.awt.Color(51, 41, 31));
-        jButton5.setText("Muat Ulang");
-        jButton5.addActionListener(this::jButton5ActionPerformed);
+        MuatUlangButtons.setBackground(new java.awt.Color(233, 220, 192));
+        MuatUlangButtons.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        MuatUlangButtons.setForeground(new java.awt.Color(51, 41, 31));
+        MuatUlangButtons.setText("Muat Ulang");
+        MuatUlangButtons.addActionListener(this::MuatUlangButtonsActionPerformed);
 
-        jTable1.setModel(new javax.swing.table.DefaultTableModel(
+        KelolaPesananTabel.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
 
             },
@@ -534,7 +2322,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane1.setViewportView(jTable1);
+        jScrollPane1.setViewportView(KelolaPesananTabel);
 
         jLabel10.setFont(new java.awt.Font("SansSerif", 1, 24)); // NOI18N
         jLabel10.setForeground(new java.awt.Color(47, 75, 58));
@@ -552,13 +2340,13 @@ public class AdminFrame extends javax.swing.JFrame {
                     .addGroup(jPanel2Layout.createSequentialGroup()
                         .addComponent(jLabel8)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jComboBox1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(StatusPesananComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(35, 35, 35)
                         .addComponent(jLabel9)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(MejaComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(35, 35, 35)
-                        .addComponent(jButton5))
+                        .addComponent(MuatUlangButtons))
                     .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 875, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addContainerGap(75, Short.MAX_VALUE))
         );
@@ -572,16 +2360,16 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel8)
-                    .addComponent(jComboBox1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(StatusPesananComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel9)
-                    .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jButton5))
+                    .addComponent(MejaComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(MuatUlangButtons))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 264, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
-        jTabbedPane1.addTab("Kelola Pesanan", jPanel2);
+        AdminPanel.addTab("Kelola Pesanan", jPanel2);
 
         jPanel23.setBackground(new java.awt.Color(255, 251, 239));
         jPanel23.setPreferredSize(new java.awt.Dimension(1000, 500));
@@ -594,7 +2382,7 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel18.setForeground(new java.awt.Color(123, 111, 96));
         jLabel18.setText("Kelola menu yang dijual di Kanopee");
 
-        jTable5.setModel(new javax.swing.table.DefaultTableModel(
+        KelolaMenuTabel.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
 
             },
@@ -610,7 +2398,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane5.setViewportView(jTable5);
+        jScrollPane5.setViewportView(KelolaMenuTabel);
 
         jPanel8.setBackground(new java.awt.Color(255, 255, 255));
 
@@ -622,7 +2410,8 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel20.setForeground(new java.awt.Color(51, 41, 31));
         jLabel20.setText("Kategori");
 
-        jComboBox3.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Makanan", "Minuman", "Snack" }));
+        KategoriComboBox.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
+        KategoriComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Makanan", "Minuman", "Snack" }));
 
         jLabel21.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         jLabel21.setForeground(new java.awt.Color(51, 41, 31));
@@ -636,26 +2425,28 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel23.setForeground(new java.awt.Color(51, 41, 31));
         jLabel23.setText("Status");
 
-        jComboBox4.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Tersedia", "Tidak Tersedia" }));
+        StatusMenuComboBox.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
+        StatusMenuComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Tersedia", "Habis" }));
+        StatusMenuComboBox.setSelectedItem(StatusMenuComboBox);
 
         jLabel24.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         jLabel24.setForeground(new java.awt.Color(51, 41, 31));
         jLabel24.setText("Deskripsi");
 
-        jButton1.setBackground(new java.awt.Color(47, 75, 58));
-        jButton1.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton1.setForeground(new java.awt.Color(255, 255, 255));
-        jButton1.setText("Tambah");
+        TambahMenuButton.setBackground(new java.awt.Color(47, 75, 58));
+        TambahMenuButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        TambahMenuButton.setForeground(new java.awt.Color(255, 255, 255));
+        TambahMenuButton.setText("Tambah");
 
-        jButton2.setBackground(new java.awt.Color(122, 82, 48));
-        jButton2.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton2.setForeground(new java.awt.Color(255, 255, 255));
-        jButton2.setText("Ubah");
+        UbahMenuButton.setBackground(new java.awt.Color(122, 82, 48));
+        UbahMenuButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        UbahMenuButton.setForeground(new java.awt.Color(255, 255, 255));
+        UbahMenuButton.setText("Ubah");
 
-        jButton3.setBackground(new java.awt.Color(168, 69, 58));
-        jButton3.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton3.setForeground(new java.awt.Color(255, 255, 255));
-        jButton3.setText("Hapus");
+        HapusMenuButton.setBackground(new java.awt.Color(168, 69, 58));
+        HapusMenuButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        HapusMenuButton.setForeground(new java.awt.Color(255, 255, 255));
+        HapusMenuButton.setText("Hapus");
 
         javax.swing.GroupLayout jPanel8Layout = new javax.swing.GroupLayout(jPanel8);
         jPanel8.setLayout(jPanel8Layout);
@@ -666,28 +2457,28 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel8Layout.createSequentialGroup()
                         .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jComboBox4, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(StatusMenuComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(jLabel24))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                            .addComponent(jButton1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(jButton2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+                            .addComponent(TambahMenuButton, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(UbahMenuButton, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
                     .addGroup(jPanel8Layout.createSequentialGroup()
                         .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jTextField9, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(StokField, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(jLabel22)
-                            .addComponent(jTextField8, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(HargaField, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(jLabel21)
-                            .addComponent(jComboBox3, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(KategoriComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(jLabel20)
                             .addComponent(jLabel19)
-                            .addComponent(jTextField7, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(NamaMenuField, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(jLabel23))
                         .addGap(0, 0, Short.MAX_VALUE))
                     .addGroup(jPanel8Layout.createSequentialGroup()
-                        .addComponent(jTextField10, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(DeskripsiField, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                        .addComponent(jButton3, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+                        .addComponent(HapusMenuButton, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
                 .addContainerGap())
         );
         jPanel8Layout.setVerticalGroup(
@@ -696,34 +2487,34 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel19)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField7, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(NamaMenuField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(jLabel20)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jComboBox3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(KategoriComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(jLabel21)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField8, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(HargaField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(jLabel22)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField9, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(StokField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(jLabel23)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addGroup(jPanel8Layout.createSequentialGroup()
                         .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(jComboBox4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(jButton1))
+                            .addComponent(StatusMenuComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(TambahMenuButton))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                         .addComponent(jLabel24))
-                    .addComponent(jButton2))
+                    .addComponent(UbahMenuButton))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jButton3)
-                    .addComponent(jTextField10, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(HapusMenuButton)
+                    .addComponent(DeskripsiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addContainerGap())
         );
 
@@ -738,9 +2529,9 @@ public class AdminFrame extends javax.swing.JFrame {
                     .addComponent(jLabel17)
                     .addGroup(jPanel23Layout.createSequentialGroup()
                         .addComponent(jPanel8, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(41, 41, 41)
-                        .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 370, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addContainerGap(162, Short.MAX_VALUE))
+                        .addGap(26, 26, 26)
+                        .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 468, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addContainerGap(80, Short.MAX_VALUE))
         );
         jPanel23Layout.setVerticalGroup(
             jPanel23Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -756,12 +2547,12 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap(27, Short.MAX_VALUE))
         );
 
-        jTabbedPane1.addTab("Kelola Menu", jPanel23);
+        AdminPanel.addTab("Kelola Menu", jPanel23);
 
         jPanel3.setBackground(new java.awt.Color(255, 251, 239));
         jPanel3.setPreferredSize(new java.awt.Dimension(1000, 500));
 
-        jTable3.setModel(new javax.swing.table.DefaultTableModel(
+        KelolaMejaTabel.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
 
             },
@@ -777,7 +2568,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane3.setViewportView(jTable3);
+        jScrollPane3.setViewportView(KelolaMejaTabel);
 
         jLabel33.setFont(new java.awt.Font("SansSerif", 1, 24)); // NOI18N
         jLabel33.setForeground(new java.awt.Color(47, 75, 58));
@@ -802,22 +2593,23 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel37.setForeground(new java.awt.Color(51, 41, 31));
         jLabel37.setText("Status");
 
-        jComboBox7.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Tersedia", "Tidak Tersedia" }));
+        StatusMejaComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Tersedia", "Terisi" }));
+        StatusMejaComboBox.setSelectedItem(StatusMejaComboBox);
 
-        jButton10.setBackground(new java.awt.Color(47, 75, 58));
-        jButton10.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton10.setForeground(new java.awt.Color(255, 255, 255));
-        jButton10.setText("Tambah");
+        TambahMejaButton.setBackground(new java.awt.Color(47, 75, 58));
+        TambahMejaButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        TambahMejaButton.setForeground(new java.awt.Color(255, 255, 255));
+        TambahMejaButton.setText("Tambah");
 
-        jButton11.setBackground(new java.awt.Color(122, 82, 48));
-        jButton11.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton11.setForeground(new java.awt.Color(255, 255, 255));
-        jButton11.setText("Ubah");
+        UbahMejaButton.setBackground(new java.awt.Color(122, 82, 48));
+        UbahMejaButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        UbahMejaButton.setForeground(new java.awt.Color(255, 255, 255));
+        UbahMejaButton.setText("Ubah");
 
-        jButton12.setBackground(new java.awt.Color(168, 69, 58));
-        jButton12.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton12.setForeground(new java.awt.Color(255, 255, 255));
-        jButton12.setText("Hapus");
+        HapusMejaButton.setBackground(new java.awt.Color(168, 69, 58));
+        HapusMejaButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        HapusMejaButton.setForeground(new java.awt.Color(255, 255, 255));
+        HapusMejaButton.setText("Hapus");
 
         javax.swing.GroupLayout jPanel24Layout = new javax.swing.GroupLayout(jPanel24);
         jPanel24.setLayout(jPanel24Layout);
@@ -832,16 +2624,16 @@ public class AdminFrame extends javax.swing.JFrame {
                     .addGroup(javax.swing.GroupLayout.Alignment.LEADING, jPanel24Layout.createSequentialGroup()
                         .addGap(10, 10, 10)
                         .addGroup(jPanel24Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addComponent(jTextField18, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(jTextField17, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                            .addComponent(NomorMejaField, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(KapasitasField, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, 262, javax.swing.GroupLayout.PREFERRED_SIZE)))
                     .addGroup(jPanel24Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                         .addGroup(jPanel24Layout.createSequentialGroup()
-                            .addComponent(jButton10)
+                            .addComponent(TambahMejaButton)
                             .addGap(18, 18, 18)
-                            .addComponent(jButton11)
+                            .addComponent(UbahMejaButton)
                             .addGap(18, 18, 18)
-                            .addComponent(jButton12))
-                        .addComponent(jComboBox7, javax.swing.GroupLayout.PREFERRED_SIZE, 266, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                            .addComponent(HapusMejaButton))
+                        .addComponent(StatusMejaComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, 266, javax.swing.GroupLayout.PREFERRED_SIZE)))
                 .addContainerGap(20, Short.MAX_VALUE))
         );
         jPanel24Layout.setVerticalGroup(
@@ -850,20 +2642,20 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addGap(24, 24, 24)
                 .addComponent(jLabel35)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField18, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(NomorMejaField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(12, 12, 12)
                 .addComponent(jLabel36)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField17, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(KapasitasField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(jLabel37)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jComboBox7, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(StatusMejaComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
                 .addGroup(jPanel24Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jButton10)
-                    .addComponent(jButton11)
-                    .addComponent(jButton12))
+                    .addComponent(TambahMejaButton)
+                    .addComponent(UbahMejaButton)
+                    .addComponent(HapusMejaButton))
                 .addContainerGap(24, Short.MAX_VALUE))
         );
 
@@ -892,11 +2684,11 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jPanel24, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 344, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 319, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addContainerGap(40, Short.MAX_VALUE))
         );
 
-        jTabbedPane1.addTab("Kelola Meja", jPanel3);
+        AdminPanel.addTab("Kelola Meja", jPanel3);
 
         jPanel7.setBackground(new java.awt.Color(255, 251, 239));
 
@@ -921,11 +2713,11 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel29.setForeground(new java.awt.Color(123, 111, 96));
         jLabel29.setText("Total Pendapatan");
 
-        jTextField15.setEditable(false);
-        jTextField15.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField15.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField15.setText("-");
-        jTextField15.setPreferredSize(new java.awt.Dimension(65, 20));
+        LaporanPendapatanField.setEditable(false);
+        LaporanPendapatanField.setBackground(new java.awt.Color(255, 255, 255));
+        LaporanPendapatanField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        LaporanPendapatanField.setText("-");
+        LaporanPendapatanField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel20Layout = new javax.swing.GroupLayout(jPanel20);
         jPanel20.setLayout(jPanel20Layout);
@@ -936,7 +2728,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel20Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                     .addComponent(jLabel29, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jTextField15, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addComponent(LaporanPendapatanField, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                 .addGap(0, 180, Short.MAX_VALUE))
         );
         jPanel20Layout.setVerticalGroup(
@@ -948,7 +2740,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel29)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField15, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(LaporanPendapatanField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
@@ -956,23 +2748,19 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel11.setForeground(new java.awt.Color(51, 41, 31));
         jLabel11.setText("Dari");
 
-        jFormattedTextField1.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
-
         jLabel12.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         jLabel12.setForeground(new java.awt.Color(51, 41, 31));
         jLabel12.setText("Sampai");
 
-        jFormattedTextField2.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
+        TampilkanLaporanButton.setBackground(new java.awt.Color(47, 75, 58));
+        TampilkanLaporanButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        TampilkanLaporanButton.setForeground(new java.awt.Color(255, 255, 255));
+        TampilkanLaporanButton.setText("Tampilkan");
 
-        jButton8.setBackground(new java.awt.Color(47, 75, 58));
-        jButton8.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton8.setForeground(new java.awt.Color(255, 255, 255));
-        jButton8.setText("Tampilkan");
-
-        jButton9.setBackground(new java.awt.Color(233, 220, 192));
-        jButton9.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton9.setForeground(new java.awt.Color(51, 41, 31));
-        jButton9.setText("Semua Tanggal");
+        SemuaTanggalButton.setBackground(new java.awt.Color(233, 220, 192));
+        SemuaTanggalButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        SemuaTanggalButton.setForeground(new java.awt.Color(51, 41, 31));
+        SemuaTanggalButton.setText("Semua Tanggal");
 
         jPanel22.setBackground(new java.awt.Color(255, 255, 255));
         jPanel22.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(233, 220, 192)));
@@ -995,11 +2783,11 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel30.setForeground(new java.awt.Color(123, 111, 96));
         jLabel30.setText("Total Transaksi");
 
-        jTextField16.setEditable(false);
-        jTextField16.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField16.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField16.setText("-");
-        jTextField16.setPreferredSize(new java.awt.Dimension(65, 20));
+        LaporanTransaksiField.setEditable(false);
+        LaporanTransaksiField.setBackground(new java.awt.Color(255, 255, 255));
+        LaporanTransaksiField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        LaporanTransaksiField.setText("-");
+        LaporanTransaksiField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel22Layout = new javax.swing.GroupLayout(jPanel22);
         jPanel22.setLayout(jPanel22Layout);
@@ -1010,7 +2798,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel22Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                     .addComponent(jLabel30, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jTextField16, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addComponent(LaporanTransaksiField, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                 .addGap(0, 191, Short.MAX_VALUE))
         );
         jPanel22Layout.setVerticalGroup(
@@ -1022,7 +2810,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel30)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField16, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(LaporanTransaksiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
@@ -1034,7 +2822,7 @@ public class AdminFrame extends javax.swing.JFrame {
         jLabel32.setForeground(new java.awt.Color(123, 111, 96));
         jLabel32.setText("Filter berdasarkan tanggal transaksi");
 
-        jTable2.setModel(new javax.swing.table.DefaultTableModel(
+        LaporanPenjualanTabel.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
 
             },
@@ -1057,7 +2845,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane2.setViewportView(jTable2);
+        jScrollPane2.setViewportView(LaporanPenjualanTabel);
 
         javax.swing.GroupLayout jPanel7Layout = new javax.swing.GroupLayout(jPanel7);
         jPanel7.setLayout(jPanel7Layout);
@@ -1071,15 +2859,15 @@ public class AdminFrame extends javax.swing.JFrame {
                     .addGroup(jPanel7Layout.createSequentialGroup()
                         .addComponent(jLabel11)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jFormattedTextField1, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(DariDateChooser, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(18, 18, 18)
                         .addComponent(jLabel12)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jFormattedTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(SampaiDateChooser, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(18, 18, 18)
-                        .addComponent(jButton8)
+                        .addComponent(TampilkanLaporanButton)
                         .addGap(18, 18, 18)
-                        .addComponent(jButton9))
+                        .addComponent(SemuaTanggalButton))
                     .addGroup(jPanel7Layout.createSequentialGroup()
                         .addComponent(jPanel22, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(50, 50, 50)
@@ -1097,13 +2885,14 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addGroup(jPanel7Layout.createSequentialGroup()
-                        .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(jLabel11)
-                            .addComponent(jFormattedTextField1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(jLabel12)
-                            .addComponent(jFormattedTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(jButton8)
-                            .addComponent(jButton9))
+                        .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(DariDateChooser, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(SampaiDateChooser, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                .addComponent(jLabel11)
+                                .addComponent(jLabel12)
+                                .addComponent(TampilkanLaporanButton)
+                                .addComponent(SemuaTanggalButton)))
                         .addGap(18, 18, 18)
                         .addComponent(jPanel22, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                     .addComponent(jPanel20, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
@@ -1112,25 +2901,38 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap(45, Short.MAX_VALUE))
         );
 
-        jTabbedPane1.addTab("Laporan Penjualan", jPanel7);
+        AdminPanel.addTab("Laporan Penjualan", jPanel7);
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jTabbedPane1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+            .addComponent(AdminPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jTabbedPane1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+            .addComponent(AdminPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
         );
 
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
-    private void jButton5ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton5ActionPerformed
+    private void MuatUlangButtonsActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_MuatUlangButtonsActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jButton5ActionPerformed
+        loadDashboard();
+        loadOrders();
+        loadMenus();
+        loadTables();
+        loadTableFilter();
+        loadReports();
+
+        JOptionPane.showMessageDialog(
+                this,
+                "Semua data berhasil dimuat ulang.",
+                "Muat Ulang",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+    }//GEN-LAST:event_MuatUlangButtonsActionPerformed
 
     /**
      * @param args the command line arguments
@@ -1158,22 +2960,41 @@ public class AdminFrame extends javax.swing.JFrame {
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JButton jButton1;
-    private javax.swing.JButton jButton10;
-    private javax.swing.JButton jButton11;
-    private javax.swing.JButton jButton12;
-    private javax.swing.JButton jButton2;
-    private javax.swing.JButton jButton3;
-    private javax.swing.JButton jButton5;
-    private javax.swing.JButton jButton8;
-    private javax.swing.JButton jButton9;
-    private javax.swing.JComboBox<String> jComboBox1;
-    private javax.swing.JComboBox<String> jComboBox2;
-    private javax.swing.JComboBox<String> jComboBox3;
-    private javax.swing.JComboBox<String> jComboBox4;
-    private javax.swing.JComboBox<String> jComboBox7;
-    private javax.swing.JFormattedTextField jFormattedTextField1;
-    private javax.swing.JFormattedTextField jFormattedTextField2;
+    private javax.swing.JTabbedPane AdminPanel;
+    private com.toedter.calendar.JDateChooser DariDateChooser;
+    private javax.swing.JTextField DeskripsiField;
+    private javax.swing.JButton HapusMejaButton;
+    private javax.swing.JButton HapusMenuButton;
+    private javax.swing.JTextField HargaField;
+    private javax.swing.JTextField JumlahTransaksiField;
+    private javax.swing.JTextField KapasitasField;
+    private javax.swing.JComboBox<String> KategoriComboBox;
+    private javax.swing.JTable KelolaMejaTabel;
+    private javax.swing.JTable KelolaMenuTabel;
+    private javax.swing.JTable KelolaPesananTabel;
+    private javax.swing.JTextField LaporanPendapatanField;
+    private javax.swing.JTable LaporanPenjualanTabel;
+    private javax.swing.JTextField LaporanTransaksiField;
+    private javax.swing.JComboBox<String> MejaComboBox;
+    private javax.swing.JTextField MejaTerisiField;
+    private javax.swing.JButton MuatUlangButtons;
+    private javax.swing.JTextField NamaMenuField;
+    private javax.swing.JTextField NomorMejaField;
+    private javax.swing.JTextField PesananMenungguField;
+    private com.toedter.calendar.JDateChooser SampaiDateChooser;
+    private javax.swing.JButton SemuaTanggalButton;
+    private javax.swing.JComboBox<String> StatusMejaComboBox;
+    private javax.swing.JComboBox<String> StatusMenuComboBox;
+    private javax.swing.JComboBox<String> StatusPesananComboBox;
+    private javax.swing.JTextField StokField;
+    private javax.swing.JButton TambahMejaButton;
+    private javax.swing.JButton TambahMenuButton;
+    private javax.swing.JButton TampilkanLaporanButton;
+    private javax.swing.JTextField TotalMejaField;
+    private javax.swing.JTextField TotalMenuField;
+    private javax.swing.JTextField TotalPendapatanField;
+    private javax.swing.JButton UbahMejaButton;
+    private javax.swing.JButton UbahMenuButton;
     private javax.swing.JLabel jLabel10;
     private javax.swing.JLabel jLabel11;
     private javax.swing.JLabel jLabel12;
@@ -1232,24 +3053,5 @@ public class AdminFrame extends javax.swing.JFrame {
     private javax.swing.JScrollPane jScrollPane2;
     private javax.swing.JScrollPane jScrollPane3;
     private javax.swing.JScrollPane jScrollPane5;
-    private javax.swing.JTabbedPane jTabbedPane1;
-    private javax.swing.JTable jTable1;
-    private javax.swing.JTable jTable2;
-    private javax.swing.JTable jTable3;
-    private javax.swing.JTable jTable5;
-    private javax.swing.JTextField jTextField1;
-    private javax.swing.JTextField jTextField10;
-    private javax.swing.JTextField jTextField15;
-    private javax.swing.JTextField jTextField16;
-    private javax.swing.JTextField jTextField17;
-    private javax.swing.JTextField jTextField18;
-    private javax.swing.JTextField jTextField2;
-    private javax.swing.JTextField jTextField3;
-    private javax.swing.JTextField jTextField4;
-    private javax.swing.JTextField jTextField5;
-    private javax.swing.JTextField jTextField6;
-    private javax.swing.JTextField jTextField7;
-    private javax.swing.JTextField jTextField8;
-    private javax.swing.JTextField jTextField9;
     // End of variables declaration//GEN-END:variables
 }

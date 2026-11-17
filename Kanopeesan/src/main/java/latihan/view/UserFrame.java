@@ -4,6 +4,28 @@
  */
 package latihan.view;
 
+import latihan.db.DBConnection;
+import latihan.util.Session;
+
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+import java.text.NumberFormat;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.JOptionPane;
+import javax.swing.SpinnerNumberModel;
+import javax.swing.table.DefaultTableModel;
+
 /**
  *
  * @author Atika
@@ -11,15 +33,1277 @@ package latihan.view;
 public class UserFrame extends javax.swing.JFrame {
     
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(UserFrame.class.getName());
+    private final List<CartItem> cart = new ArrayList<>();
+    private int selectedTableId = -1;
+    private String selectedTableNumber = null;
+
+    private final NumberFormat currencyFormat =
+            NumberFormat.getCurrencyInstance(
+                    new Locale("id", "ID")
+            );
+
+    private static class CartItem {
+        int menuId;
+        String name;
+        double price;
+        int quantity;
+
+        CartItem(
+                int menuId,
+                String name,
+                double price,
+                int quantity
+        ) {
+            this.menuId = menuId;
+            this.name = name;
+            this.price = price;
+            this.quantity = quantity;
+        }
+
+        double getSubtotal() {
+            return price * quantity;
+        }
+    }
 
     /**
      * Creates new form UserFrame
      */
     public UserFrame() {
         initComponents();
+        setLocationRelativeTo(null);
+
+        // Spinner minimal 1
+        JumlahPesananSpinner.setModel(
+                new SpinnerNumberModel(
+                        1,
+                        1,
+                        100,
+                        1
+                )
+        );
+
+        JumlahSpinner.setModel(
+                new SpinnerNumberModel(
+                        1,
+                        1,
+                        100,
+                        1
+                )
+        );
+
+        // Dialog pembayaran
+        jDialog1.setModal(true);
+        jDialog1.setResizable(false);
+        jDialog1.pack();
+        jDialog1.setLocationRelativeTo(this);
+
+        // Kategori
+        KategoriMenuComboBox.setModel(
+                new DefaultComboBoxModel<>(
+                        new String[]{
+                            "Semua",
+                            "Makanan",
+                            "Minuman",
+                            "Snack"
+                        }
+                )
+        );
+
+        // Klik history untuk melihat detail
+        RiwayatTransaksiTabel.addMouseListener(
+                new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        if (e.getClickCount() == 1) {
+                            loadSelectedTransactionDetail();
+                        }
+                    }
+                }
+        );
+
+        loadTables();
+        loadMenus();
+        loadCart();
+        loadHistory();
+        updateDashboard();
     }
     
-    
+    private String formatRupiah(double amount) {
+        return currencyFormat.format(amount).replace("Rp", "Rp ");
+    }
+
+    private void loadTables() {
+        DefaultTableModel model =
+                (DefaultTableModel) PilihMejaTabel.getModel();
+        model.setRowCount(0);
+        NomorMejaField.removeAllItems();
+
+        String sql = """
+                SELECT id, table_number, capacity, status
+                FROM dining_tables
+                ORDER BY id
+                """;
+
+        try (
+                Connection conn = DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql);
+                ResultSet rs = stmt.executeQuery()
+        ) {
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String number = rs.getString("table_number");
+                int capacity = rs.getInt("capacity");
+                String status = rs.getString("status");
+                model.addRow(new Object[]{
+                    number,
+                    capacity,
+                    status
+                });
+
+                if ("TERSEDIA".equalsIgnoreCase(status)) {
+                    NomorMejaField.addItem(number);
+                }
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private void loadMenus() {
+        loadMenusByCategory(
+                KategoriMenuComboBox.getSelectedItem() == null
+                        ? "Semua"
+                        : KategoriMenuComboBox
+                                .getSelectedItem()
+                                .toString()
+        );
+    }
+
+    private void loadMenusByCategory(String category) {
+        DefaultTableModel model =
+                (DefaultTableModel) DaftarMenuTabel.getModel();
+
+        model.setRowCount(0);
+        String sql;
+        boolean filter =
+                category != null
+                && !category.equalsIgnoreCase("Semua");
+
+        if (filter) {
+            sql = """
+                    SELECT
+                        id,
+                        name,
+                        category,
+                        price,
+                        stock,
+                        status
+                    FROM menus
+                    WHERE category = ?
+                    ORDER BY id
+                    """;
+        } else {
+            sql = """
+                    SELECT
+                        id,
+                        name,
+                        category,
+                        price,
+                        stock,
+                        status
+                    FROM menus
+                    ORDER BY id
+                    """;
+        }
+
+        try (
+                Connection conn = DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+            if (filter) {
+                stmt.setString(1, category);
+            }
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    int stock = rs.getInt("stock");
+                    String status = rs.getString("status");
+                    String availability =
+                            stock > 0
+                                    && "TERSEDIA".equalsIgnoreCase(status)
+                                    ? "Tersedia"
+                                    : "Habis";
+
+                    model.addRow(new Object[]{
+                        rs.getString("name"),
+                        rs.getString("category"),
+                        rs.getString("category"),
+                        (int) rs.getDouble("price"),
+                        stock,
+                        availability
+                    });
+                }
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private void selectTable() {
+        Object selected = NomorMejaField.getSelectedItem();
+
+        if (selected == null) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Silakan pilih nomor meja.",
+                    "Pilih Meja",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        String tableNumber = selected.toString();
+
+        String sql = """
+                SELECT id, table_number, capacity, status
+                FROM dining_tables
+                WHERE table_number = ?
+                """;
+
+        try (
+                Connection conn = DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+            stmt.setString(1, tableNumber);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Meja tidak ditemukan.",
+                            "Pilih Meja",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                    return;
+                }
+
+                String status = rs.getString("status");
+
+                if (!"TERSEDIA".equalsIgnoreCase(status)) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Meja tersebut sedang digunakan.",
+                            "Pilih Meja",
+                            JOptionPane.WARNING_MESSAGE
+                    );
+                    loadTables();
+                    return;
+                }
+
+                selectedTableId = rs.getInt("id");
+                selectedTableNumber = rs.getString("table_number");
+
+                MejaSayaField.setText(
+                        selectedTableNumber
+                );
+
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Meja "
+                        + selectedTableNumber
+                        + " berhasil dipilih.",
+                        "Pilih Meja",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private void addToCart() {
+        int selectedRow = DaftarMenuTabel.getSelectedRow();
+
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Silakan pilih menu terlebih dahulu.",
+                    "Keranjang",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        if (selectedTableId == -1) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Silakan pilih meja terlebih dahulu.",
+                    "Keranjang",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        int quantity =
+                ((Number) JumlahPesananSpinner
+                        .getValue())
+                        .intValue();
+
+        String menuName =
+                DaftarMenuTabel
+                        .getValueAt(
+                                selectedRow,
+                                0
+                        )
+                        .toString();
+
+        double price =
+                Double.parseDouble(
+                        DaftarMenuTabel
+                                .getValueAt(
+                                        selectedRow,
+                                        3
+                                )
+                                .toString()
+                );
+
+        int stock =
+                Integer.parseInt(
+                        DaftarMenuTabel
+                                .getValueAt(
+                                        selectedRow,
+                                        4
+                                )
+                                .toString()
+                );
+
+        String availability =
+                DaftarMenuTabel
+                        .getValueAt(
+                                selectedRow,
+                                5
+                        )
+                        .toString();
+
+        if (!"Tersedia".equalsIgnoreCase(
+                availability
+        )) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Menu tersebut sedang habis.",
+                    "Keranjang",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        if (quantity > stock) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Jumlah melebihi stok.\n"
+                    + "Stok tersedia: "
+                    + stock,
+                    "Keranjang",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        int menuId = getMenuIdByName(menuName);
+
+        if (menuId == -1) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Menu tidak ditemukan di database.",
+                    "Keranjang",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+
+        // Kalau menu sudah ada di cart
+        for (CartItem item : cart) {
+            if (item.menuId == menuId) {
+                int newQuantity = item.quantity + quantity;
+                if (newQuantity > stock) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Jumlah pesanan melebihi stok.",
+                            "Keranjang",
+                            JOptionPane.WARNING_MESSAGE
+                    );
+                    return;
+                }
+
+                item.quantity = newQuantity;
+                loadCart();
+                return;
+            }
+        }
+
+        cart.add(
+                new CartItem(
+                        menuId,
+                        menuName,
+                        price,
+                        quantity
+                )
+        );
+
+        loadCart();
+
+        JOptionPane.showMessageDialog(
+                this,
+                menuName
+                + " berhasil ditambahkan ke keranjang.",
+                "Keranjang",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+    }
+
+    private int getMenuIdByName(String name) {
+        String sql = """
+                SELECT id
+                FROM menus
+                WHERE name = ?
+                LIMIT 1
+                """;
+
+        try (
+                Connection conn = DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+            stmt.setString(1, name);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("id");
+                }
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+        return -1;
+    }
+
+    private void loadCart() {
+        DefaultTableModel model =
+                (DefaultTableModel) KeranjangTabel.getModel();
+
+        model.setRowCount(0);
+        double total = 0;
+
+        for (CartItem item : cart) {
+            double subtotal = item.getSubtotal();
+            total += subtotal;
+
+            model.addRow(new Object[]{
+                item.name,
+                (int) item.price,
+                item.quantity,
+                (int) subtotal
+            });
+        }
+
+        TotalKeranjangField.setText(
+                formatRupiah(total)
+        );
+    }
+
+    private void updateCartItem() {
+        int selectedRow =
+                KeranjangTabel.getSelectedRow();
+
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Pilih menu di keranjang terlebih dahulu.",
+                    "Keranjang",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        int newQuantity =
+                ((Number) JumlahSpinner
+                        .getValue())
+                        .intValue();
+
+        CartItem item =
+                cart.get(selectedRow);
+
+        int stock =
+                getMenuStock(item.menuId);
+
+        if (stock < 0) {
+            return;
+        }
+
+        if (newQuantity > stock) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Jumlah melebihi stok.\n"
+                    + "Stok tersedia: "
+                    + stock,
+                    "Keranjang",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        item.quantity = newQuantity;
+        loadCart();
+    }
+
+    private int getMenuStock(int menuId) {
+        String sql = """
+                SELECT stock
+                FROM menus
+                WHERE id = ?
+                """;
+
+        try (
+                Connection conn = DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+            stmt.setInt(1, menuId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("stock");
+                }
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+        return -1;
+    }
+
+    private void removeCartItem() {
+        int selectedRow =
+                KeranjangTabel.getSelectedRow();
+
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Pilih menu yang ingin dihapus.",
+                    "Keranjang",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        CartItem item =
+                cart.get(selectedRow);
+
+        int confirm =
+                JOptionPane.showConfirmDialog(
+                        this,
+                        "Hapus "
+                        + item.name
+                        + " dari keranjang?",
+                        "Konfirmasi",
+                        JOptionPane.YES_NO_OPTION
+                );
+
+        if (confirm ==
+                JOptionPane.YES_OPTION) {
+            cart.remove(selectedRow);
+            loadCart();
+        }
+    }
+
+    private double getCartTotal() {
+        double total = 0;
+        for (CartItem item : cart) {
+            total += item.getSubtotal();
+        }
+        return total;
+    }
+
+    private void openCheckoutDialog() {
+        if (selectedTableId == -1) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Silakan pilih meja terlebih dahulu.",
+                    "Checkout",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        if (cart.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Keranjang masih kosong.",
+                    "Checkout",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        jFormattedTextField5.setText(
+                Session.getUsername()
+        );
+
+        jFormattedTextField6.setText(
+                selectedTableNumber
+        );
+
+        double total =
+                getCartTotal();
+
+        jFormattedTextField8.setText(
+                formatRupiah(total)
+        );
+
+        jFormattedTextField7.setText(
+                formatRupiah(0)
+        );
+
+        jTextField4.setText("");
+
+        DefaultTableModel model =
+                (DefaultTableModel) jTable6.getModel();
+
+        model.setRowCount(0);
+
+        for (CartItem item : cart) {
+            model.addRow(new Object[]{
+                item.name,
+                item.quantity,
+                (int) item.price,
+                (int) item.getSubtotal()
+            });
+        }
+
+        jDialog1.pack();
+        jDialog1.setLocationRelativeTo(this);
+        jDialog1.setVisible(true);
+    }
+
+    private void processPayment() {
+        if (cart.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Keranjang kosong.",
+                    "Pembayaran",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        if (selectedTableId == -1) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Meja belum dipilih.",
+                    "Pembayaran",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        String paidText =
+                jTextField4.getText()
+                        .trim()
+                        .replace("Rp", "")
+                        .replace(".", "")
+                        .replace(",", "");
+
+        if (paidText.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Masukkan nominal pembayaran.",
+                    "Pembayaran",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        double paid;
+
+        try {
+            paid = Double.parseDouble(
+                    paidText
+            );
+
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Nominal pembayaran tidak valid.",
+                    "Pembayaran",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        double total = getCartTotal();
+
+        if (paid < total) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Uang yang dibayar kurang.\n"
+                    + "Total: "
+                    + formatRupiah(total),
+                    "Pembayaran",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        double change = paid - total;
+
+        Connection conn = null;
+        try {
+            conn = DBConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            /*
+            * Lock meja selama transaksi.
+            */
+            String tableSql = """
+                    SELECT status
+                    FROM dining_tables
+                    WHERE id = ?
+                    FOR UPDATE
+                    """;
+
+            try (
+                    PreparedStatement tableStmt =
+                            conn.prepareStatement(
+                                    tableSql
+                            )
+            ) {
+                tableStmt.setInt(
+                        1,
+                        selectedTableId
+                );
+                try (
+                        ResultSet rs =
+                                tableStmt.executeQuery()
+                ) {
+                    if (!rs.next()) {
+                        throw new SQLException(
+                                "Meja tidak ditemukan."
+                        );
+                    }
+
+                    if (!"TERSEDIA".equalsIgnoreCase(
+                            rs.getString("status")
+                    )) {
+
+                        throw new SQLException(
+                                "Meja sudah digunakan oleh pelanggan lain."
+                        );
+                    }
+                }
+            }
+
+            /*
+            * Buat order.
+            */
+            String orderSql = """
+                    INSERT INTO orders
+                        (
+                            user_id,
+                            table_id,
+                            status,
+                            total,
+                            paid,
+                            change_amount
+                        )
+                    VALUES
+                        (?, ?, 'MENUNGGU', ?, ?, ?)
+                    """;
+
+            int orderId;
+            try (
+                    PreparedStatement orderStmt =
+                            conn.prepareStatement(
+                                    orderSql,
+                                    java.sql.Statement.RETURN_GENERATED_KEYS
+                            )
+            ) {
+                orderStmt.setInt(
+                        1,
+                        Session.getUserId()
+                );
+
+                orderStmt.setInt(
+                        2,
+                        selectedTableId
+                );
+
+                orderStmt.setDouble(
+                        3,
+                        total
+                );
+
+                orderStmt.setDouble(
+                        4,
+                        paid
+                );
+
+                orderStmt.setDouble(
+                        5,
+                        change
+                );
+
+                orderStmt.executeUpdate();
+                try (
+                        ResultSet keys =
+                                orderStmt.getGeneratedKeys()
+                ) {
+                    if (!keys.next()) {
+                        throw new SQLException(
+                                "Gagal mendapatkan ID pesanan."
+                        );
+                    }
+                    orderId = keys.getInt(1);
+                }
+            }
+
+            /*
+            * Masukkan item pesanan.
+            */
+            String itemSql = """
+                    INSERT INTO order_items
+                        (
+                            order_id,
+                            menu_id,
+                            quantity,
+                            price,
+                            subtotal
+                        )
+                    VALUES
+                        (?, ?, ?, ?, ?)
+                    """;
+
+            /*
+            * Kurangi stok.
+            */
+            String stockSql = """
+                    UPDATE menus
+                    SET stock = stock - ?
+                    WHERE id = ?
+                    AND stock >= ?
+                    """;
+
+            /*
+            * Tandai meja terisi.
+            */
+            String tableUpdateSql = """
+                    UPDATE dining_tables
+                    SET status = 'TERISI'
+                    WHERE id = ?
+                    """;
+
+            try (
+                    PreparedStatement itemStmt =
+                            conn.prepareStatement(itemSql);
+                    PreparedStatement stockStmt =
+                            conn.prepareStatement(stockSql);
+                    PreparedStatement tableUpdateStmt =
+                            conn.prepareStatement(
+                                    tableUpdateSql
+                            )
+            ) {
+                for (CartItem item : cart) {
+                    itemStmt.setInt(
+                            1,
+                            orderId
+                    );
+
+                    itemStmt.setInt(
+                            2,
+                            item.menuId
+                    );
+
+                    itemStmt.setInt(
+                            3,
+                            item.quantity
+                    );
+
+                    itemStmt.setDouble(
+                            4,
+                            item.price
+                    );
+
+                    itemStmt.setDouble(
+                            5,
+                            item.getSubtotal()
+                    );
+
+                    itemStmt.executeUpdate();
+
+                    stockStmt.setInt(
+                            1,
+                            item.quantity
+                    );
+
+                    stockStmt.setInt(
+                            2,
+                            item.menuId
+                    );
+
+                    stockStmt.setInt(
+                            3,
+                            item.quantity
+                    );
+
+                    int updated =
+                            stockStmt.executeUpdate();
+
+                    if (updated == 0) {
+                        throw new SQLException(
+                                "Stok menu "
+                                + item.name
+                                + " tidak mencukupi."
+                        );
+                    }
+                }
+
+                tableUpdateStmt.setInt(
+                        1,
+                        selectedTableId
+                );
+                tableUpdateStmt.executeUpdate();
+            }
+
+            conn.commit();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Pembayaran berhasil!\n"
+                    + "No. Pesanan: #"
+                    + orderId
+                    + "\n"
+                    + "Total: "
+                    + formatRupiah(total)
+                    + "\n"
+                    + "Kembalian: "
+                    + formatRupiah(change),
+                    "Pembayaran Berhasil",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+            jDialog1.setVisible(false);
+
+            cart.clear();
+
+            selectedTableId = -1;
+            selectedTableNumber = null;
+
+            MejaSayaField.setText("-");
+
+            loadTables();
+            loadMenus();
+            loadCart();
+            loadHistory();
+            updateDashboard();
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackError) {
+                    rollbackError.printStackTrace();
+                }
+            }
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Pembayaran gagal.\n"
+                    + e.getMessage(),
+                    "Pembayaran Gagal",
+                    JOptionPane.ERROR_MESSAGE
+            );
+
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private void loadHistory() {
+        DefaultTableModel model =
+                (DefaultTableModel)
+                        RiwayatTransaksiTabel
+                                .getModel();
+
+        model.setRowCount(0);
+
+        if (!Session.isLoggedIn()) {
+            return;
+        }
+
+        String sql = """
+                SELECT
+                    o.id,
+                    o.order_date,
+                    d.table_number,
+                    o.status,
+                    o.total,
+                    o.paid,
+                    o.change_amount
+                FROM orders o
+                JOIN dining_tables d
+                    ON d.id = o.table_id
+                WHERE o.user_id = ?
+                ORDER BY o.id DESC
+                """;
+
+        try (
+                Connection conn = DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+            stmt.setInt(
+                    1,
+                    Session.getUserId()
+            );
+            try (
+                    ResultSet rs =
+                            stmt.executeQuery()
+            ) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{
+                        rs.getInt("id"),
+                        rs.getTimestamp("order_date"),
+                        rs.getString("table_number"),
+                        rs.getString("status"),
+                        formatRupiah(
+                                rs.getDouble("total")
+                        ),
+                        formatRupiah(
+                                rs.getDouble("paid")
+                        ),
+                        formatRupiah(
+                                rs.getDouble("change_amount")
+                        )
+                    });
+                }
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private void loadSelectedTransactionDetail() {
+        int selectedRow =
+                RiwayatTransaksiTabel
+                        .getSelectedRow();
+
+        if (selectedRow == -1) {
+            return;
+        }
+
+        int orderId =
+                Integer.parseInt(
+                        RiwayatTransaksiTabel
+                                .getValueAt(
+                                        selectedRow,
+                                        0
+                                )
+                                .toString()
+                );
+
+        DefaultTableModel model =
+                (DefaultTableModel)
+                        DetailTransaksiTabel
+                                .getModel();
+
+        model.setRowCount(0);
+
+        String sql = """
+                SELECT
+                    m.name,
+                    oi.quantity,
+                    oi.price,
+                    oi.subtotal
+                FROM order_items oi
+                JOIN menus m
+                    ON m.id = oi.menu_id
+                JOIN orders o
+                    ON o.id = oi.order_id
+                WHERE oi.order_id = ?
+                AND o.user_id = ?
+                ORDER BY oi.id
+                """;
+
+        try (
+                Connection conn = DBConnection.getConnection();
+                PreparedStatement stmt =
+                        conn.prepareStatement(sql)
+        ) {
+            stmt.setInt(
+                    1,
+                    orderId
+            );
+
+            stmt.setInt(
+                    2,
+                    Session.getUserId()
+            );
+            try (
+                    ResultSet rs =
+                            stmt.executeQuery()
+            ) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{
+                        rs.getString("name"),
+                        rs.getInt("quantity"),
+                        (int) rs.getDouble("price"),
+                        (int) rs.getDouble("subtotal")
+                    });
+                }
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private void updateDashboard() {
+        if (!Session.isLoggedIn()) {
+            return;
+        }
+
+        String tableSql = """
+                SELECT
+                    d.table_number
+                FROM dining_tables d
+                JOIN orders o
+                    ON o.table_id = d.id
+                WHERE o.user_id = ?
+                AND o.status IN (
+                        'MENUNGGU',
+                        'DIPROSES',
+                        'SIAP DIANTAR'
+                )
+                ORDER BY o.id DESC
+                LIMIT 1
+                """;
+
+        String processSql = """
+                SELECT COUNT(*)
+                FROM orders
+                WHERE user_id = ?
+                AND status IN (
+                        'MENUNGGU',
+                        'DIPROSES',
+                        'SIAP DIANTAR'
+                )
+                """;
+
+        String transactionSql = """
+                SELECT COUNT(*)
+                FROM orders
+                WHERE user_id = ?
+                """;
+
+        try (
+                Connection conn =
+                        DBConnection.getConnection()
+        ) {
+            try (
+                    PreparedStatement stmt =
+                            conn.prepareStatement(
+                                    tableSql
+                            )
+            ) {
+                stmt.setInt(
+                        1,
+                        Session.getUserId()
+                );
+                try (
+                        ResultSet rs =
+                                stmt.executeQuery()
+                ) {
+                    if (rs.next()) {
+                        MejaSayaField.setText(
+                                rs.getString(
+                                        "table_number"
+                                )
+                        );
+                    } else {
+                        MejaSayaField.setText("-");
+                    }
+                }
+            }
+            try (
+                    PreparedStatement stmt =
+                            conn.prepareStatement(
+                                    processSql
+                            )
+            ) {
+                stmt.setInt(
+                        1,
+                        Session.getUserId()
+                );
+                try (
+                        ResultSet rs =
+                                stmt.executeQuery()
+                ) {
+                    rs.next();
+                    PesananDalamProsesField.setText(
+                            String.valueOf(
+                                    rs.getInt(1)
+                            )
+                    );
+                }
+            }
+            try (
+                    PreparedStatement stmt =
+                            conn.prepareStatement(
+                                    transactionSql
+                            )
+            ) {
+                stmt.setInt(
+                        1,
+                        Session.getUserId()
+                );
+                try (
+                        ResultSet rs =
+                                stmt.executeQuery()
+                ) {
+                    rs.next();
+                    JumlahTransaksiField.setText(
+                            String.valueOf(
+                                    rs.getInt(1)
+                            )
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private void showDatabaseError(SQLException e) {
+        JOptionPane.showMessageDialog(
+                this,
+                "Terjadi kesalahan database.\n"
+                + e.getMessage(),
+                "Database Error",
+                JOptionPane.ERROR_MESSAGE
+        );
+        e.printStackTrace();
+    }
 
     /**
      * This method is called from within the constructor to initialize the form.
@@ -47,8 +1331,8 @@ public class UserFrame extends javax.swing.JFrame {
         jTextField4 = new javax.swing.JTextField();
         jFormattedTextField7 = new javax.swing.JFormattedTextField();
         jFormattedTextField8 = new javax.swing.JFormattedTextField();
-        jButton10 = new javax.swing.JButton();
-        jButton13 = new javax.swing.JButton();
+        BatalBayarButton = new javax.swing.JButton();
+        BayarSekarangButton = new javax.swing.JButton();
         jTabbedPane1 = new javax.swing.JTabbedPane();
         jPanel1 = new javax.swing.JPanel();
         jPanel11 = new javax.swing.JPanel();
@@ -64,55 +1348,56 @@ public class UserFrame extends javax.swing.JFrame {
         jPanel6 = new javax.swing.JPanel();
         jPanel18 = new javax.swing.JPanel();
         jLabel6 = new javax.swing.JLabel();
-        jTextField1 = new javax.swing.JTextField();
+        MejaSayaField = new javax.swing.JTextField();
         jPanel13 = new javax.swing.JPanel();
         jPanel14 = new javax.swing.JPanel();
         jLabel13 = new javax.swing.JLabel();
-        jTextField2 = new javax.swing.JTextField();
+        PesananDalamProsesField = new javax.swing.JTextField();
         jPanel15 = new javax.swing.JPanel();
         jPanel16 = new javax.swing.JPanel();
         jLabel15 = new javax.swing.JLabel();
-        jTextField3 = new javax.swing.JTextField();
+        JumlahTransaksiField = new javax.swing.JTextField();
         jPanel2 = new javax.swing.JPanel();
         jLabel7 = new javax.swing.JLabel();
         jLabel8 = new javax.swing.JLabel();
         jLabel9 = new javax.swing.JLabel();
-        jComboBox2 = new javax.swing.JComboBox<>();
-        jButton5 = new javax.swing.JButton();
+        NomorMejaField = new javax.swing.JComboBox<>();
+        PilihMejaButton = new javax.swing.JButton();
         jScrollPane2 = new javax.swing.JScrollPane();
-        jTable2 = new javax.swing.JTable();
+        PilihMejaTabel = new javax.swing.JTable();
         jPanel3 = new javax.swing.JPanel();
         jLabel1 = new javax.swing.JLabel();
         jLabel2 = new javax.swing.JLabel();
         jLabel3 = new javax.swing.JLabel();
-        jComboBox1 = new javax.swing.JComboBox<>();
+        KategoriMenuComboBox = new javax.swing.JComboBox<>();
         jScrollPane1 = new javax.swing.JScrollPane();
-        jTable1 = new javax.swing.JTable();
+        DaftarMenuTabel = new javax.swing.JTable();
+        jLabel34 = new javax.swing.JLabel();
+        JumlahPesananSpinner = new javax.swing.JSpinner();
+        TambahKeranjangButton = new javax.swing.JButton();
         jPanel4 = new javax.swing.JPanel();
-        jButton12 = new javax.swing.JButton();
-        jButton9 = new javax.swing.JButton();
+        HapusKeranjangButton = new javax.swing.JButton();
+        CheckoutButton = new javax.swing.JButton();
         jLabel14 = new javax.swing.JLabel();
-        jFormattedTextField4 = new javax.swing.JFormattedTextField();
+        TotalKeranjangField = new javax.swing.JFormattedTextField();
         jLabel16 = new javax.swing.JLabel();
         jLabel17 = new javax.swing.JLabel();
         jScrollPane5 = new javax.swing.JScrollPane();
-        jTable5 = new javax.swing.JTable();
+        KeranjangTabel = new javax.swing.JTable();
         jLabel18 = new javax.swing.JLabel();
-        jFormattedTextField3 = new javax.swing.JFormattedTextField();
+        PesananDipilihField = new javax.swing.JFormattedTextField();
         jLabel19 = new javax.swing.JLabel();
-        jSpinner2 = new javax.swing.JSpinner();
-        jButton11 = new javax.swing.JButton();
+        JumlahSpinner = new javax.swing.JSpinner();
+        UbahKeranjangButton = new javax.swing.JButton();
         jPanel5 = new javax.swing.JPanel();
         jLabel10 = new javax.swing.JLabel();
         jLabel11 = new javax.swing.JLabel();
         jScrollPane3 = new javax.swing.JScrollPane();
-        jTable3 = new javax.swing.JTable();
+        RiwayatTransaksiTabel = new javax.swing.JTable();
         jLabel12 = new javax.swing.JLabel();
         jScrollPane4 = new javax.swing.JScrollPane();
-        jTable4 = new javax.swing.JTable();
-        jButton6 = new javax.swing.JButton();
-
-        jDialog1.setPreferredSize(new java.awt.Dimension(620, 440));
+        DetailTransaksiTabel = new javax.swing.JTable();
+        MuatUlangButton = new javax.swing.JButton();
 
         jPanel7.setBackground(new java.awt.Color(255, 251, 239));
 
@@ -211,16 +1496,17 @@ public class UserFrame extends javax.swing.JFrame {
 
         jFormattedTextField8.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
 
-        jButton10.setBackground(new java.awt.Color(233, 220, 192));
-        jButton10.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton10.setForeground(new java.awt.Color(51, 41, 31));
-        jButton10.setText("Batal");
+        BatalBayarButton.setBackground(new java.awt.Color(233, 220, 192));
+        BatalBayarButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        BatalBayarButton.setForeground(new java.awt.Color(51, 41, 31));
+        BatalBayarButton.setText("Batal");
+        BatalBayarButton.addActionListener(this::BatalBayarButtonActionPerformed);
 
-        jButton13.setBackground(new java.awt.Color(47, 75, 58));
-        jButton13.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton13.setForeground(new java.awt.Color(255, 255, 255));
-        jButton13.setText("Bayar Sekarang");
-        jButton13.addActionListener(this::jButton13ActionPerformed);
+        BayarSekarangButton.setBackground(new java.awt.Color(47, 75, 58));
+        BayarSekarangButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        BayarSekarangButton.setForeground(new java.awt.Color(255, 255, 255));
+        BayarSekarangButton.setText("Bayar Sekarang");
+        BayarSekarangButton.addActionListener(this::BayarSekarangButtonActionPerformed);
 
         javax.swing.GroupLayout jPanel7Layout = new javax.swing.GroupLayout(jPanel7);
         jPanel7.setLayout(jPanel7Layout);
@@ -241,9 +1527,9 @@ public class UserFrame extends javax.swing.JFrame {
                             .addComponent(jFormattedTextField7, javax.swing.GroupLayout.PREFERRED_SIZE, 72, javax.swing.GroupLayout.PREFERRED_SIZE)))
                     .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                         .addGroup(jPanel7Layout.createSequentialGroup()
-                            .addComponent(jButton10)
+                            .addComponent(BatalBayarButton)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(jButton13))
+                            .addComponent(BayarSekarangButton))
                         .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                             .addComponent(jLabel23)
                             .addComponent(jLabel20)
@@ -280,8 +1566,8 @@ public class UserFrame extends javax.swing.JFrame {
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel7Layout.createSequentialGroup()
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 38, Short.MAX_VALUE)
                         .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(jButton13)
-                            .addComponent(jButton10))
+                            .addComponent(BayarSekarangButton)
+                            .addComponent(BatalBayarButton))
                         .addGap(36, 36, 36))))
         );
 
@@ -302,6 +1588,7 @@ public class UserFrame extends javax.swing.JFrame {
         jTabbedPane1.setForeground(new java.awt.Color(255, 255, 255));
 
         jPanel1.setBackground(new java.awt.Color(255, 251, 239));
+        jPanel1.setPreferredSize(new java.awt.Dimension(1000, 500));
 
         jPanel11.setBackground(new java.awt.Color(47, 75, 58));
 
@@ -417,11 +1704,11 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel6.setForeground(new java.awt.Color(123, 111, 96));
         jLabel6.setText("Meja Saya");
 
-        jTextField1.setEditable(false);
-        jTextField1.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField1.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField1.setText("-");
-        jTextField1.setPreferredSize(new java.awt.Dimension(65, 20));
+        MejaSayaField.setEditable(false);
+        MejaSayaField.setBackground(new java.awt.Color(255, 255, 255));
+        MejaSayaField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        MejaSayaField.setText("-");
+        MejaSayaField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel6Layout = new javax.swing.GroupLayout(jPanel6);
         jPanel6.setLayout(jPanel6Layout);
@@ -432,8 +1719,8 @@ public class UserFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel6Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                     .addComponent(jLabel6, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jTextField1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-                .addGap(0, 0, Short.MAX_VALUE))
+                    .addComponent(MejaSayaField, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addGap(0, 197, Short.MAX_VALUE))
         );
         jPanel6Layout.setVerticalGroup(
             jPanel6Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -444,7 +1731,7 @@ public class UserFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel6)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(MejaSayaField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
@@ -469,11 +1756,11 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel13.setForeground(new java.awt.Color(123, 111, 96));
         jLabel13.setText("Pesanan dalam proses");
 
-        jTextField2.setEditable(false);
-        jTextField2.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField2.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField2.setText("-");
-        jTextField2.setPreferredSize(new java.awt.Dimension(65, 20));
+        PesananDalamProsesField.setEditable(false);
+        PesananDalamProsesField.setBackground(new java.awt.Color(255, 255, 255));
+        PesananDalamProsesField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        PesananDalamProsesField.setText("-");
+        PesananDalamProsesField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel13Layout = new javax.swing.GroupLayout(jPanel13);
         jPanel13.setLayout(jPanel13Layout);
@@ -484,8 +1771,8 @@ public class UserFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel13Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel13)
-                    .addComponent(jTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(0, 0, Short.MAX_VALUE))
+                    .addComponent(PesananDalamProsesField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(0, 140, Short.MAX_VALUE))
         );
         jPanel13Layout.setVerticalGroup(
             jPanel13Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -494,7 +1781,7 @@ public class UserFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel13)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addComponent(PesananDalamProsesField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
         jPanel15.setBackground(new java.awt.Color(255, 255, 255));
@@ -518,11 +1805,11 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel15.setForeground(new java.awt.Color(123, 111, 96));
         jLabel15.setText("Jumlah transaksi");
 
-        jTextField3.setEditable(false);
-        jTextField3.setBackground(new java.awt.Color(255, 255, 255));
-        jTextField3.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jTextField3.setText("-");
-        jTextField3.setPreferredSize(new java.awt.Dimension(65, 20));
+        JumlahTransaksiField.setEditable(false);
+        JumlahTransaksiField.setBackground(new java.awt.Color(255, 255, 255));
+        JumlahTransaksiField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        JumlahTransaksiField.setText("-");
+        JumlahTransaksiField.setPreferredSize(new java.awt.Dimension(65, 20));
 
         javax.swing.GroupLayout jPanel15Layout = new javax.swing.GroupLayout(jPanel15);
         jPanel15.setLayout(jPanel15Layout);
@@ -533,8 +1820,8 @@ public class UserFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel15Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel15)
-                    .addComponent(jTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(0, 0, Short.MAX_VALUE))
+                    .addComponent(JumlahTransaksiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(0, 174, Short.MAX_VALUE))
         );
         jPanel15Layout.setVerticalGroup(
             jPanel15Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -543,7 +1830,7 @@ public class UserFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel15)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addComponent(JumlahTransaksiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
@@ -554,18 +1841,15 @@ public class UserFrame extends javax.swing.JFrame {
                 .addGap(50, 50, 50)
                 .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(jPanel1Layout.createSequentialGroup()
-                        .addComponent(jPanel6, javax.swing.GroupLayout.DEFAULT_SIZE, 427, Short.MAX_VALUE)
+                        .addComponent(jPanel6, javax.swing.GroupLayout.PREFERRED_SIZE, 291, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(18, 18, 18)
-                        .addComponent(jPanel13, javax.swing.GroupLayout.DEFAULT_SIZE, 427, Short.MAX_VALUE)
+                        .addComponent(jPanel13, javax.swing.GroupLayout.PREFERRED_SIZE, 290, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(18, 18, 18)
-                        .addComponent(jPanel15, javax.swing.GroupLayout.DEFAULT_SIZE, 429, Short.MAX_VALUE))
-                    .addGroup(jPanel1Layout.createSequentialGroup()
-                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabel5)
-                            .addComponent(jLabel4)
-                            .addComponent(jPanel11, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(0, 886, Short.MAX_VALUE)))
-                .addContainerGap())
+                        .addComponent(jPanel15, javax.swing.GroupLayout.PREFERRED_SIZE, 291, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(jLabel5)
+                    .addComponent(jLabel4)
+                    .addComponent(jPanel11, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addContainerGap(42, Short.MAX_VALUE))
         );
         jPanel1Layout.setVerticalGroup(
             jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -601,17 +1885,17 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel9.setForeground(new java.awt.Color(51, 41, 31));
         jLabel9.setText("Nomor Meja");
 
-        jComboBox2.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
-        jComboBox2.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08", "K09", "K10" }));
-        jComboBox2.addActionListener(this::jComboBox2ActionPerformed);
+        NomorMejaField.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
+        NomorMejaField.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08", "K09", "K10" }));
+        NomorMejaField.addActionListener(this::NomorMejaFieldActionPerformed);
 
-        jButton5.setBackground(new java.awt.Color(47, 75, 58));
-        jButton5.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton5.setForeground(new java.awt.Color(255, 255, 255));
-        jButton5.setText("Pilih Meja");
-        jButton5.addActionListener(this::jButton5ActionPerformed);
+        PilihMejaButton.setBackground(new java.awt.Color(47, 75, 58));
+        PilihMejaButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        PilihMejaButton.setForeground(new java.awt.Color(255, 255, 255));
+        PilihMejaButton.setText("Pilih Meja");
+        PilihMejaButton.addActionListener(this::PilihMejaButtonActionPerformed);
 
-        jTable2.setModel(new javax.swing.table.DefaultTableModel(
+        PilihMejaTabel.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
 
             },
@@ -627,7 +1911,7 @@ public class UserFrame extends javax.swing.JFrame {
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane2.setViewportView(jTable2);
+        jScrollPane2.setViewportView(PilihMejaTabel);
 
         javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
         jPanel2.setLayout(jPanel2Layout);
@@ -640,12 +1924,12 @@ public class UserFrame extends javax.swing.JFrame {
                     .addGroup(jPanel2Layout.createSequentialGroup()
                         .addComponent(jLabel9)
                         .addGap(18, 18, 18)
-                        .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(NomorMejaField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(18, 18, 18)
-                        .addComponent(jButton5))
+                        .addComponent(PilihMejaButton))
                     .addComponent(jLabel8)
                     .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 650, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(675, Short.MAX_VALUE))
+                .addContainerGap(300, Short.MAX_VALUE))
         );
         jPanel2Layout.setVerticalGroup(
             jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -657,8 +1941,8 @@ public class UserFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel9)
-                    .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jButton5))
+                    .addComponent(NomorMejaField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(PilihMejaButton))
                 .addGap(12, 12, 12)
                 .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 264, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(60, Short.MAX_VALUE))
@@ -667,6 +1951,7 @@ public class UserFrame extends javax.swing.JFrame {
         jTabbedPane1.addTab("Pilih Meja", jPanel2);
 
         jPanel3.setBackground(new java.awt.Color(255, 251, 239));
+        jPanel3.setPreferredSize(new java.awt.Dimension(1000, 500));
 
         jLabel1.setFont(new java.awt.Font("SansSerif", 1, 24)); // NOI18N
         jLabel1.setForeground(new java.awt.Color(47, 75, 58));
@@ -680,11 +1965,12 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel3.setForeground(new java.awt.Color(51, 41, 31));
         jLabel3.setText("Tampilkan");
 
-        jComboBox1.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
-        jComboBox1.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Belum Selesai", "Selesai" }));
-        jComboBox1.addActionListener(this::jComboBox1ActionPerformed);
+        KategoriMenuComboBox.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
+        KategoriMenuComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Semua", "Makanan", "Minuman", "Snack" }));
+        KategoriMenuComboBox.setSelectedItem(KategoriMenuComboBox);
+        KategoriMenuComboBox.addActionListener(this::KategoriMenuComboBoxActionPerformed);
 
-        jTable1.setModel(new javax.swing.table.DefaultTableModel(
+        DaftarMenuTabel.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
 
             },
@@ -707,7 +1993,17 @@ public class UserFrame extends javax.swing.JFrame {
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane1.setViewportView(jTable1);
+        jScrollPane1.setViewportView(DaftarMenuTabel);
+
+        jLabel34.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        jLabel34.setForeground(new java.awt.Color(51, 41, 31));
+        jLabel34.setText("Jumlah");
+
+        TambahKeranjangButton.setBackground(new java.awt.Color(47, 75, 58));
+        TambahKeranjangButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        TambahKeranjangButton.setForeground(new java.awt.Color(255, 255, 255));
+        TambahKeranjangButton.setText("Tambah ke Keranjang");
+        TambahKeranjangButton.addActionListener(this::TambahKeranjangButtonActionPerformed);
 
         javax.swing.GroupLayout jPanel3Layout = new javax.swing.GroupLayout(jPanel3);
         jPanel3.setLayout(jPanel3Layout);
@@ -715,15 +2011,22 @@ public class UserFrame extends javax.swing.JFrame {
             jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel3Layout.createSequentialGroup()
                 .addGap(50, 50, 50)
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 875, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addGroup(jPanel3Layout.createSequentialGroup()
-                        .addComponent(jLabel3)
+                        .addComponent(jLabel34)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jComboBox1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addComponent(jLabel2)
-                    .addComponent(jLabel1))
-                .addContainerGap(450, Short.MAX_VALUE))
+                        .addComponent(JumlahPesananSpinner, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(TambahKeranjangButton))
+                    .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                        .addComponent(jLabel2)
+                        .addComponent(jLabel1)
+                        .addGroup(jPanel3Layout.createSequentialGroup()
+                            .addComponent(jLabel3)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                            .addComponent(KategoriMenuComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 900, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addContainerGap(50, Short.MAX_VALUE))
         );
         jPanel3Layout.setVerticalGroup(
             jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -735,33 +2038,39 @@ public class UserFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel3)
-                    .addComponent(jComboBox1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(KategoriMenuComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 264, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(61, Short.MAX_VALUE))
+                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 249, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
+                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(jLabel34)
+                    .addComponent(JumlahPesananSpinner, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(TambahKeranjangButton))
+                .addContainerGap(35, Short.MAX_VALUE))
         );
 
         jTabbedPane1.addTab("Daftar Menu", jPanel3);
 
         jPanel4.setBackground(new java.awt.Color(255, 251, 239));
 
-        jButton12.setBackground(new java.awt.Color(168, 69, 58));
-        jButton12.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton12.setForeground(new java.awt.Color(255, 255, 255));
-        jButton12.setText("Hapus");
+        HapusKeranjangButton.setBackground(new java.awt.Color(168, 69, 58));
+        HapusKeranjangButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        HapusKeranjangButton.setForeground(new java.awt.Color(255, 255, 255));
+        HapusKeranjangButton.setText("Hapus");
+        HapusKeranjangButton.addActionListener(this::HapusKeranjangButtonActionPerformed);
 
-        jButton9.setBackground(new java.awt.Color(47, 75, 58));
-        jButton9.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton9.setForeground(new java.awt.Color(255, 255, 255));
-        jButton9.setText("Checkout");
-        jButton9.addActionListener(this::jButton9ActionPerformed);
+        CheckoutButton.setBackground(new java.awt.Color(47, 75, 58));
+        CheckoutButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        CheckoutButton.setForeground(new java.awt.Color(255, 255, 255));
+        CheckoutButton.setText("Checkout");
+        CheckoutButton.addActionListener(this::CheckoutButtonActionPerformed);
 
         jLabel14.setFont(new java.awt.Font("SansSerif", 1, 24)); // NOI18N
         jLabel14.setForeground(new java.awt.Color(47, 75, 58));
         jLabel14.setText("Keranjang");
 
-        jFormattedTextField4.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
-        jFormattedTextField4.addActionListener(this::jFormattedTextField4ActionPerformed);
+        TotalKeranjangField.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
+        TotalKeranjangField.addActionListener(this::TotalKeranjangFieldActionPerformed);
 
         jLabel16.setFont(new java.awt.Font("SansSerif", 0, 12)); // NOI18N
         jLabel16.setForeground(new java.awt.Color(123, 111, 96));
@@ -771,7 +2080,7 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel17.setForeground(new java.awt.Color(51, 41, 31));
         jLabel17.setText("Total: Rp");
 
-        jTable5.setModel(new javax.swing.table.DefaultTableModel(
+        KeranjangTabel.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
 
             },
@@ -794,24 +2103,25 @@ public class UserFrame extends javax.swing.JFrame {
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane5.setViewportView(jTable5);
+        jScrollPane5.setViewportView(KeranjangTabel);
 
         jLabel18.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         jLabel18.setForeground(new java.awt.Color(51, 41, 31));
         jLabel18.setText("Pesanan");
 
-        jFormattedTextField3.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
-        jFormattedTextField3.addActionListener(this::jFormattedTextField3ActionPerformed);
+        PesananDipilihField.setEditable(false);
+        PesananDipilihField.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
+        PesananDipilihField.addActionListener(this::PesananDipilihFieldActionPerformed);
 
         jLabel19.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         jLabel19.setForeground(new java.awt.Color(51, 41, 31));
         jLabel19.setText("Jumlah baru");
 
-        jButton11.setBackground(new java.awt.Color(122, 82, 48));
-        jButton11.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton11.setForeground(new java.awt.Color(255, 255, 255));
-        jButton11.setText("Ubah");
-        jButton11.addActionListener(this::jButton11ActionPerformed);
+        UbahKeranjangButton.setBackground(new java.awt.Color(122, 82, 48));
+        UbahKeranjangButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        UbahKeranjangButton.setForeground(new java.awt.Color(255, 255, 255));
+        UbahKeranjangButton.setText("Ubah");
+        UbahKeranjangButton.addActionListener(this::UbahKeranjangButtonActionPerformed);
 
         javax.swing.GroupLayout jPanel4Layout = new javax.swing.GroupLayout(jPanel4);
         jPanel4.setLayout(jPanel4Layout);
@@ -826,23 +2136,23 @@ public class UserFrame extends javax.swing.JFrame {
                         .addGroup(jPanel4Layout.createSequentialGroup()
                             .addComponent(jLabel18)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(jFormattedTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(PesananDipilihField, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                             .addComponent(jLabel19)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(jSpinner2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(JumlahSpinner, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                            .addComponent(jButton11)
+                            .addComponent(UbahKeranjangButton)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                            .addComponent(jButton12)
+                            .addComponent(HapusKeranjangButton)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addComponent(jLabel17)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(jFormattedTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(TotalKeranjangField, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(jButton9))
+                            .addComponent(CheckoutButton))
                         .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 890, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addContainerGap(435, Short.MAX_VALUE))
+                .addContainerGap(60, Short.MAX_VALUE))
         );
         jPanel4Layout.setVerticalGroup(
             jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -856,15 +2166,15 @@ public class UserFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel18)
-                    .addComponent(jFormattedTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(PesananDipilihField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel19)
-                    .addComponent(jSpinner2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jButton11)
-                    .addComponent(jButton12)
-                    .addComponent(jButton9)
-                    .addComponent(jFormattedTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(JumlahSpinner, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(UbahKeranjangButton)
+                    .addComponent(HapusKeranjangButton)
+                    .addComponent(CheckoutButton)
+                    .addComponent(TotalKeranjangField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel17))
-                .addContainerGap(184, Short.MAX_VALUE))
+                .addContainerGap(149, Short.MAX_VALUE))
         );
 
         jTabbedPane1.addTab("Keranjang", jPanel4);
@@ -880,7 +2190,7 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel11.setForeground(new java.awt.Color(123, 111, 96));
         jLabel11.setText("Pesanan Anda serta status pesanan (Menunggu, Diproses, Siap Diantar, Selesai)");
 
-        jTable3.setModel(new javax.swing.table.DefaultTableModel(
+        RiwayatTransaksiTabel.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
 
             },
@@ -903,20 +2213,20 @@ public class UserFrame extends javax.swing.JFrame {
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane3.setViewportView(jTable3);
-        if (jTable3.getColumnModel().getColumnCount() > 0) {
-            jTable3.getColumnModel().getColumn(0).setHeaderValue("No. Pesanan");
-            jTable3.getColumnModel().getColumn(1).setResizable(false);
-            jTable3.getColumnModel().getColumn(1).setHeaderValue("Tanggal");
-            jTable3.getColumnModel().getColumn(2).setResizable(false);
-            jTable3.getColumnModel().getColumn(2).setHeaderValue("Meja");
+        jScrollPane3.setViewportView(RiwayatTransaksiTabel);
+        if (RiwayatTransaksiTabel.getColumnModel().getColumnCount() > 0) {
+            RiwayatTransaksiTabel.getColumnModel().getColumn(0).setHeaderValue("No. Pesanan");
+            RiwayatTransaksiTabel.getColumnModel().getColumn(1).setResizable(false);
+            RiwayatTransaksiTabel.getColumnModel().getColumn(1).setHeaderValue("Tanggal");
+            RiwayatTransaksiTabel.getColumnModel().getColumn(2).setResizable(false);
+            RiwayatTransaksiTabel.getColumnModel().getColumn(2).setHeaderValue("Meja");
         }
 
         jLabel12.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         jLabel12.setForeground(new java.awt.Color(51, 41, 31));
         jLabel12.setText("Detail menu pada pesanan yang dipilih");
 
-        jTable4.setModel(new javax.swing.table.DefaultTableModel(
+        DetailTransaksiTabel.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
 
             },
@@ -932,13 +2242,13 @@ public class UserFrame extends javax.swing.JFrame {
                 return canEdit [columnIndex];
             }
         });
-        jScrollPane4.setViewportView(jTable4);
+        jScrollPane4.setViewportView(DetailTransaksiTabel);
 
-        jButton6.setBackground(new java.awt.Color(47, 75, 58));
-        jButton6.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton6.setForeground(new java.awt.Color(255, 255, 255));
-        jButton6.setText("Muat Ulang Status");
-        jButton6.addActionListener(this::jButton6ActionPerformed);
+        MuatUlangButton.setBackground(new java.awt.Color(47, 75, 58));
+        MuatUlangButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        MuatUlangButton.setForeground(new java.awt.Color(255, 255, 255));
+        MuatUlangButton.setText("Muat Ulang Status");
+        MuatUlangButton.addActionListener(this::MuatUlangButtonActionPerformed);
 
         javax.swing.GroupLayout jPanel5Layout = new javax.swing.GroupLayout(jPanel5);
         jPanel5.setLayout(jPanel5Layout);
@@ -947,13 +2257,13 @@ public class UserFrame extends javax.swing.JFrame {
             .addGroup(jPanel5Layout.createSequentialGroup()
                 .addGap(50, 50, 50)
                 .addGroup(jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jButton6)
+                    .addComponent(MuatUlangButton)
                     .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 875, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel12)
                     .addComponent(jScrollPane4, javax.swing.GroupLayout.PREFERRED_SIZE, 500, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel11)
                     .addComponent(jLabel10))
-                .addContainerGap(450, Short.MAX_VALUE))
+                .addContainerGap(75, Short.MAX_VALUE))
         );
         jPanel5Layout.setVerticalGroup(
             jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -969,7 +2279,7 @@ public class UserFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jScrollPane4, javax.swing.GroupLayout.PREFERRED_SIZE, 128, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jButton6)
+                .addComponent(MuatUlangButton)
                 .addContainerGap(28, Short.MAX_VALUE))
         );
 
@@ -983,43 +2293,59 @@ public class UserFrame extends javax.swing.JFrame {
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jTabbedPane1)
+            .addComponent(jTabbedPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 500, Short.MAX_VALUE)
         );
 
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
-    private void jComboBox1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jComboBox1ActionPerformed
+    private void KategoriMenuComboBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_KategoriMenuComboBoxActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jComboBox1ActionPerformed
+        loadMenus();
+    }//GEN-LAST:event_KategoriMenuComboBoxActionPerformed
 
-    private void jComboBox2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jComboBox2ActionPerformed
+    private void NomorMejaFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_NomorMejaFieldActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jComboBox2ActionPerformed
+    }//GEN-LAST:event_NomorMejaFieldActionPerformed
 
-    private void jButton5ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton5ActionPerformed
+    private void PilihMejaButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_PilihMejaButtonActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jButton5ActionPerformed
+        selectTable();
+    }//GEN-LAST:event_PilihMejaButtonActionPerformed
 
-    private void jButton6ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton6ActionPerformed
+    private void MuatUlangButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_MuatUlangButtonActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jButton6ActionPerformed
+        loadTables();
+        loadMenus();
+        loadCart();
+        loadHistory();
+        updateDashboard();
 
-    private void jButton9ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton9ActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_jButton9ActionPerformed
+        JOptionPane.showMessageDialog(
+                this,
+                "Data berhasil dimuat ulang.",
+                "Muat Ulang",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+    }//GEN-LAST:event_MuatUlangButtonActionPerformed
 
-    private void jFormattedTextField4ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jFormattedTextField4ActionPerformed
+    private void CheckoutButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_CheckoutButtonActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jFormattedTextField4ActionPerformed
+        openCheckoutDialog();
+    }//GEN-LAST:event_CheckoutButtonActionPerformed
 
-    private void jFormattedTextField3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jFormattedTextField3ActionPerformed
+    private void TotalKeranjangFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_TotalKeranjangFieldActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jFormattedTextField3ActionPerformed
+    }//GEN-LAST:event_TotalKeranjangFieldActionPerformed
 
-    private void jButton11ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton11ActionPerformed
+    private void PesananDipilihFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_PesananDipilihFieldActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jButton11ActionPerformed
+    }//GEN-LAST:event_PesananDipilihFieldActionPerformed
+
+    private void UbahKeranjangButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_UbahKeranjangButtonActionPerformed
+        // TODO add your handling code here:
+        updateCartItem();
+    }//GEN-LAST:event_UbahKeranjangButtonActionPerformed
 
     private void jFormattedTextField5ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jFormattedTextField5ActionPerformed
         // TODO add your handling code here:
@@ -1033,9 +2359,25 @@ public class UserFrame extends javax.swing.JFrame {
         // TODO add your handling code here:
     }//GEN-LAST:event_jTextField4ActionPerformed
 
-    private void jButton13ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton13ActionPerformed
+    private void BayarSekarangButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BayarSekarangButtonActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jButton13ActionPerformed
+        processPayment();
+    }//GEN-LAST:event_BayarSekarangButtonActionPerformed
+
+    private void TambahKeranjangButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_TambahKeranjangButtonActionPerformed
+        // TODO add your handling code here:
+        addToCart();
+    }//GEN-LAST:event_TambahKeranjangButtonActionPerformed
+
+    private void HapusKeranjangButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_HapusKeranjangButtonActionPerformed
+        // TODO add your handling code here:
+        removeCartItem();
+    }//GEN-LAST:event_HapusKeranjangButtonActionPerformed
+
+    private void BatalBayarButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BatalBayarButtonActionPerformed
+        // TODO add your handling code here:
+        jDialog1.setVisible(false);
+    }//GEN-LAST:event_BatalBayarButtonActionPerformed
 
     /**
      * @param args the command line arguments
@@ -1063,18 +2405,29 @@ public class UserFrame extends javax.swing.JFrame {
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JButton jButton10;
-    private javax.swing.JButton jButton11;
-    private javax.swing.JButton jButton12;
-    private javax.swing.JButton jButton13;
-    private javax.swing.JButton jButton5;
-    private javax.swing.JButton jButton6;
-    private javax.swing.JButton jButton9;
-    private javax.swing.JComboBox<String> jComboBox1;
-    private javax.swing.JComboBox<String> jComboBox2;
+    private javax.swing.JButton BatalBayarButton;
+    private javax.swing.JButton BayarSekarangButton;
+    private javax.swing.JButton CheckoutButton;
+    private javax.swing.JTable DaftarMenuTabel;
+    private javax.swing.JTable DetailTransaksiTabel;
+    private javax.swing.JButton HapusKeranjangButton;
+    private javax.swing.JSpinner JumlahPesananSpinner;
+    private javax.swing.JSpinner JumlahSpinner;
+    private javax.swing.JTextField JumlahTransaksiField;
+    private javax.swing.JComboBox<String> KategoriMenuComboBox;
+    private javax.swing.JTable KeranjangTabel;
+    private javax.swing.JTextField MejaSayaField;
+    private javax.swing.JButton MuatUlangButton;
+    private javax.swing.JComboBox<String> NomorMejaField;
+    private javax.swing.JTextField PesananDalamProsesField;
+    private javax.swing.JFormattedTextField PesananDipilihField;
+    private javax.swing.JButton PilihMejaButton;
+    private javax.swing.JTable PilihMejaTabel;
+    private javax.swing.JTable RiwayatTransaksiTabel;
+    private javax.swing.JButton TambahKeranjangButton;
+    private javax.swing.JFormattedTextField TotalKeranjangField;
+    private javax.swing.JButton UbahKeranjangButton;
     private javax.swing.JDialog jDialog1;
-    private javax.swing.JFormattedTextField jFormattedTextField3;
-    private javax.swing.JFormattedTextField jFormattedTextField4;
     private javax.swing.JFormattedTextField jFormattedTextField5;
     private javax.swing.JFormattedTextField jFormattedTextField6;
     private javax.swing.JFormattedTextField jFormattedTextField7;
@@ -1105,6 +2458,7 @@ public class UserFrame extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel31;
     private javax.swing.JLabel jLabel32;
     private javax.swing.JLabel jLabel33;
+    private javax.swing.JLabel jLabel34;
     private javax.swing.JLabel jLabel4;
     private javax.swing.JLabel jLabel5;
     private javax.swing.JLabel jLabel6;
@@ -1132,17 +2486,8 @@ public class UserFrame extends javax.swing.JFrame {
     private javax.swing.JScrollPane jScrollPane4;
     private javax.swing.JScrollPane jScrollPane5;
     private javax.swing.JScrollPane jScrollPane6;
-    private javax.swing.JSpinner jSpinner2;
     private javax.swing.JTabbedPane jTabbedPane1;
-    private javax.swing.JTable jTable1;
-    private javax.swing.JTable jTable2;
-    private javax.swing.JTable jTable3;
-    private javax.swing.JTable jTable4;
-    private javax.swing.JTable jTable5;
     private javax.swing.JTable jTable6;
-    private javax.swing.JTextField jTextField1;
-    private javax.swing.JTextField jTextField2;
-    private javax.swing.JTextField jTextField3;
     private javax.swing.JTextField jTextField4;
     // End of variables declaration//GEN-END:variables
 }

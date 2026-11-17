@@ -4,6 +4,16 @@
  */
 package latihan.view;
 
+import latihan.db.DBConnection;
+import latihan.util.PasswordUtil;
+import latihan.util.Session;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+import javax.swing.JOptionPane;
 /**
  *
  * @author ameld
@@ -36,12 +46,12 @@ public class LoginFrame extends javax.swing.JFrame {
         jLabel3 = new javax.swing.JLabel();
         jLabel4 = new javax.swing.JLabel();
         jLabel5 = new javax.swing.JLabel();
-        jTextField1 = new javax.swing.JTextField();
+        UsernameLoginField = new javax.swing.JTextField();
         jLabel6 = new javax.swing.JLabel();
-        jButton1 = new javax.swing.JButton();
-        jButton2 = new javax.swing.JButton();
-        jButton3 = new javax.swing.JButton();
-        jPasswordField1 = new javax.swing.JPasswordField();
+        LoginButton = new javax.swing.JButton();
+        DaftarButton = new javax.swing.JButton();
+        LoginAdminButton = new javax.swing.JButton();
+        PasswordLoginField = new javax.swing.JPasswordField();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setBackground(new java.awt.Color(255, 251, 239));
@@ -106,23 +116,23 @@ public class LoginFrame extends javax.swing.JFrame {
         jLabel6.setForeground(new java.awt.Color(51, 41, 31));
         jLabel6.setText("Password");
 
-        jButton1.setBackground(new java.awt.Color(47, 75, 58));
-        jButton1.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton1.setForeground(new java.awt.Color(255, 255, 255));
-        jButton1.setText("Login");
-        jButton1.addActionListener(this::jButton1ActionPerformed);
+        LoginButton.setBackground(new java.awt.Color(47, 75, 58));
+        LoginButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        LoginButton.setForeground(new java.awt.Color(255, 255, 255));
+        LoginButton.setText("Login");
+        LoginButton.addActionListener(this::LoginButtonActionPerformed);
 
-        jButton2.setBackground(new java.awt.Color(233, 220, 192));
-        jButton2.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton2.setForeground(new java.awt.Color(51, 41, 31));
-        jButton2.setText("Belum punya akun? Daftar");
-        jButton2.addActionListener(this::jButton2ActionPerformed);
+        DaftarButton.setBackground(new java.awt.Color(233, 220, 192));
+        DaftarButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        DaftarButton.setForeground(new java.awt.Color(51, 41, 31));
+        DaftarButton.setText("Belum punya akun? Daftar");
+        DaftarButton.addActionListener(this::DaftarButtonActionPerformed);
 
-        jButton3.setBackground(new java.awt.Color(47, 75, 58));
-        jButton3.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jButton3.setForeground(new java.awt.Color(255, 255, 255));
-        jButton3.setText("Login sebagai Admin");
-        jButton3.addActionListener(this::jButton3ActionPerformed);
+        LoginAdminButton.setBackground(new java.awt.Color(47, 75, 58));
+        LoginAdminButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        LoginAdminButton.setForeground(new java.awt.Color(255, 255, 255));
+        LoginAdminButton.setText("Login sebagai Admin");
+        LoginAdminButton.addActionListener(this::LoginAdminButtonActionPerformed);
 
         javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
         jPanel2.setLayout(jPanel2Layout);
@@ -137,15 +147,15 @@ public class LoginFrame extends javax.swing.JFrame {
                             .addComponent(jLabel3)
                             .addComponent(jLabel4)
                             .addComponent(jLabel5)
-                            .addComponent(jTextField1)
+                            .addComponent(UsernameLoginField)
                             .addComponent(jLabel6)
-                            .addComponent(jButton1)
-                            .addComponent(jButton2)
-                            .addComponent(jPasswordField1, javax.swing.GroupLayout.DEFAULT_SIZE, 234, Short.MAX_VALUE))
+                            .addComponent(LoginButton)
+                            .addComponent(DaftarButton)
+                            .addComponent(PasswordLoginField, javax.swing.GroupLayout.DEFAULT_SIZE, 234, Short.MAX_VALUE))
                         .addContainerGap(55, Short.MAX_VALUE))
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                        .addComponent(jButton3)
+                        .addComponent(LoginAdminButton)
                         .addGap(18, 18, 18))))
         );
         jPanel2Layout.setVerticalGroup(
@@ -159,17 +169,17 @@ public class LoginFrame extends javax.swing.JFrame {
                 .addGap(18, 18, 18)
                 .addComponent(jLabel5)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jTextField1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(UsernameLoginField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
                 .addComponent(jLabel6)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jPasswordField1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(PasswordLoginField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
-                .addComponent(jButton1)
+                .addComponent(LoginButton)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(jButton2)
+                .addComponent(DaftarButton)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 120, Short.MAX_VALUE)
-                .addComponent(jButton3)
+                .addComponent(LoginAdminButton)
                 .addGap(16, 16, 16))
         );
 
@@ -187,17 +197,206 @@ public class LoginFrame extends javax.swing.JFrame {
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
-    private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
+    private void LoginButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_LoginButtonActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jButton1ActionPerformed
+        String username = UsernameLoginField.getText().trim();
+        String password = new String(PasswordLoginField.getPassword());
 
-    private void jButton2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton2ActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_jButton2ActionPerformed
+        if (username.isEmpty() || password.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Username dan password wajib diisi.",
+                    "Login",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
 
-    private void jButton3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton3ActionPerformed
+        String sql = """
+                SELECT id, username, email, password, role
+                FROM users
+                WHERE username = ?
+                """;
+
+        try (
+                Connection conn = DBConnection.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)
+        ) {
+            stmt.setString(1, username);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Username atau password salah.",
+                            "Login Gagal",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                    return;
+                }
+
+                String storedPassword = rs.getString("password");
+                boolean passwordValid =
+                        PasswordUtil.verifyPassword(
+                                password,
+                                storedPassword
+                        );
+
+                if (!passwordValid) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Username atau password salah.",
+                            "Login Gagal",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                    return;
+                }
+
+                String role = rs.getString("role");
+
+                // Tombol login biasa hanya untuk USER
+                if (!"USER".equalsIgnoreCase(role)) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Akun admin harus login melalui tombol Login sebagai Admin.",
+                            "Login",
+                            JOptionPane.WARNING_MESSAGE
+                    );
+                    return;
+                }
+
+                Session.login(
+                        rs.getInt("id"),
+                        rs.getString("username"),
+                        rs.getString("email"),
+                        role
+                );
+
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Login berhasil. Selamat datang, "
+                        + rs.getString("username") + "!",
+                        "Login Berhasil",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+
+                UserFrame userFrame = new UserFrame();
+                userFrame.setLocationRelativeTo(null);
+                userFrame.setVisible(true);
+                dispose();
+            }
+
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Tidak dapat terhubung ke database.\n"
+                    + e.getMessage(),
+                    "Database Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }//GEN-LAST:event_LoginButtonActionPerformed
+
+    private void DaftarButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_DaftarButtonActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jButton3ActionPerformed
+        RegisterFrame registerFrame = new RegisterFrame();
+        registerFrame.setLocationRelativeTo(null);
+        registerFrame.setVisible(true);
+        dispose();
+    }//GEN-LAST:event_DaftarButtonActionPerformed
+
+    private void LoginAdminButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_LoginAdminButtonActionPerformed
+        // TODO add your handling code here:
+        String username = UsernameLoginField.getText().trim();
+        String password = new String(PasswordLoginField.getPassword());
+
+        if (username.isEmpty() || password.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Username dan password wajib diisi.",
+                    "Login Admin",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        String sql = """
+                SELECT id, username, email, password, role
+                FROM users
+                WHERE username = ?
+                """;
+
+        try (
+                Connection conn = DBConnection.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)
+        ) {
+            stmt.setString(1, username);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Username atau password salah.",
+                            "Login Admin Gagal",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                    return;
+                }
+
+                String storedPassword = rs.getString("password");
+                boolean passwordValid =
+                        PasswordUtil.verifyPassword(
+                                password,
+                                storedPassword
+                        );
+
+                if (!passwordValid) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Username atau password salah.",
+                            "Login Admin Gagal",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                    return;
+                }
+
+                String role = rs.getString("role");
+                if (!"ADMIN".equalsIgnoreCase(role)) {
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Akun ini bukan akun admin.",
+                            "Akses Ditolak",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                    return;
+                }
+
+                Session.login(
+                        rs.getInt("id"),
+                        rs.getString("username"),
+                        rs.getString("email"),
+                        role
+                );
+
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Login admin berhasil.",
+                        "Login Berhasil",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+
+                AdminFrame adminFrame = new AdminFrame();
+                adminFrame.setVisible(true);
+            }
+
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Tidak dapat terhubung ke database.\n"
+                    + e.getMessage(),
+                    "Database Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }//GEN-LAST:event_LoginAdminButtonActionPerformed
 
     /**
      * @param args the command line arguments
@@ -225,9 +424,11 @@ public class LoginFrame extends javax.swing.JFrame {
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JButton jButton1;
-    private javax.swing.JButton jButton2;
-    private javax.swing.JButton jButton3;
+    private javax.swing.JButton DaftarButton;
+    private javax.swing.JButton LoginAdminButton;
+    private javax.swing.JButton LoginButton;
+    private javax.swing.JPasswordField PasswordLoginField;
+    private javax.swing.JTextField UsernameLoginField;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel3;
@@ -237,7 +438,5 @@ public class LoginFrame extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel8;
     private javax.swing.JPanel jPanel2;
     private javax.swing.JPanel jPanel3;
-    private javax.swing.JPasswordField jPasswordField1;
-    private javax.swing.JTextField jTextField1;
     // End of variables declaration//GEN-END:variables
 }

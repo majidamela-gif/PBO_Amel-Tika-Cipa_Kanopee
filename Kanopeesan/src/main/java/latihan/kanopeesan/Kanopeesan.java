@@ -3,6 +3,11 @@
  */
 
 package latihan.kanopeesan;
+import latihan.db.DatabaseInitializer;
+import latihan.view.LoginFrame;
+
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 
 /**
  *
@@ -11,6 +16,32 @@ package latihan.kanopeesan;
 public class Kanopeesan {
 
     public static void main(String[] args) {
-        System.out.println("Hello World!");
+        try {
+            for (
+                    UIManager.LookAndFeelInfo info
+                    : UIManager.getInstalledLookAndFeels()
+            ) {
+                if ("Nimbus".equals(info.getName())) {
+                    UIManager.setLookAndFeel(
+                            info.getClassName()
+                    );
+                    break;
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // Buat database + tabel + data awal
+        DatabaseInitializer.initialize();
+
+        // Buka halaman login
+        SwingUtilities.invokeLater(() -> {
+            LoginFrame loginFrame =
+                    new LoginFrame();
+            loginFrame.setLocationRelativeTo(null);
+            loginFrame.setVisible(true);
+        });
     }
 }
