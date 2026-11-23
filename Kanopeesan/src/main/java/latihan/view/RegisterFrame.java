@@ -282,10 +282,10 @@ public class RegisterFrame extends javax.swing.JFrame {
         }
 
         // Validasi password
-        if (password.length() < 6) {
+        if (password.length() < 8) {
             JOptionPane.showMessageDialog(
                     this,
-                    "Password minimal 6 karakter.",
+                    "Password minimal 8 karakter.",
                     "Registrasi",
                     JOptionPane.WARNING_MESSAGE
             );

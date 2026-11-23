@@ -9,15 +9,12 @@ import latihan.util.Session;
 
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import java.text.NumberFormat;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -680,6 +677,7 @@ public class AdminFrame extends javax.swing.JFrame {
                     category,
                     price,
                     stock,
+                    description,
                     status
                 FROM menus
                 ORDER BY id
@@ -701,14 +699,14 @@ public class AdminFrame extends javax.swing.JFrame {
                 model.addRow(new Object[]{
                     rs.getString("name"),
                     rs.getString("category"),
-                    rs.getString("category"),
                     formatRupiah(
                             rs.getDouble("price")
                     ),
                     rs.getInt("stock"),
                     convertMenuStatus(
                             status
-                    )
+                    ),
+                    rs.getString("description")
                 });
             }
 
@@ -1843,6 +1841,7 @@ public class AdminFrame extends javax.swing.JFrame {
         jPanel14 = new javax.swing.JPanel();
         jLabel15 = new javax.swing.JLabel();
         MejaTerisiField = new javax.swing.JTextField();
+        LogoutAdminButton = new javax.swing.JButton();
         jPanel2 = new javax.swing.JPanel();
         jLabel7 = new javax.swing.JLabel();
         jLabel8 = new javax.swing.JLabel();
@@ -1942,7 +1941,7 @@ public class AdminFrame extends javax.swing.JFrame {
         TotalMejaField.setBackground(new java.awt.Color(255, 255, 255));
         TotalMejaField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         TotalMejaField.setText("-");
-        TotalMejaField.setPreferredSize(new java.awt.Dimension(65, 20));
+        TotalMejaField.setPreferredSize(new java.awt.Dimension(65, 35));
 
         javax.swing.GroupLayout jPanel9Layout = new javax.swing.GroupLayout(jPanel9);
         jPanel9.setLayout(jPanel9Layout);
@@ -1995,7 +1994,7 @@ public class AdminFrame extends javax.swing.JFrame {
         TotalPendapatanField.setBackground(new java.awt.Color(255, 255, 255));
         TotalPendapatanField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         TotalPendapatanField.setText("-");
-        TotalPendapatanField.setPreferredSize(new java.awt.Dimension(65, 20));
+        TotalPendapatanField.setPreferredSize(new java.awt.Dimension(65, 35));
 
         javax.swing.GroupLayout jPanel15Layout = new javax.swing.GroupLayout(jPanel15);
         jPanel15.setLayout(jPanel15Layout);
@@ -2006,8 +2005,8 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel15Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel16)
-                    .addComponent(TotalPendapatanField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(0, 90, Short.MAX_VALUE))
+                    .addComponent(TotalPendapatanField, javax.swing.GroupLayout.PREFERRED_SIZE, 150, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(0, 31, Short.MAX_VALUE))
         );
         jPanel15Layout.setVerticalGroup(
             jPanel15Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -2071,7 +2070,7 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel5)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(TotalMenuField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(TotalMenuField, javax.swing.GroupLayout.PREFERRED_SIZE, 35, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
@@ -2100,7 +2099,8 @@ public class AdminFrame extends javax.swing.JFrame {
         JumlahTransaksiField.setBackground(new java.awt.Color(255, 255, 255));
         JumlahTransaksiField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         JumlahTransaksiField.setText("-");
-        JumlahTransaksiField.setPreferredSize(new java.awt.Dimension(65, 20));
+        JumlahTransaksiField.setPreferredSize(new java.awt.Dimension(65, 35));
+        JumlahTransaksiField.addActionListener(this::JumlahTransaksiFieldActionPerformed);
 
         javax.swing.GroupLayout jPanel11Layout = new javax.swing.GroupLayout(jPanel11);
         jPanel11.setLayout(jPanel11Layout);
@@ -2149,7 +2149,7 @@ public class AdminFrame extends javax.swing.JFrame {
         PesananMenungguField.setBackground(new java.awt.Color(255, 255, 255));
         PesananMenungguField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         PesananMenungguField.setText("-");
-        PesananMenungguField.setPreferredSize(new java.awt.Dimension(65, 20));
+        PesananMenungguField.setPreferredSize(new java.awt.Dimension(65, 35));
 
         javax.swing.GroupLayout jPanel19Layout = new javax.swing.GroupLayout(jPanel19);
         jPanel19.setLayout(jPanel19Layout);
@@ -2198,7 +2198,7 @@ public class AdminFrame extends javax.swing.JFrame {
         MejaTerisiField.setBackground(new java.awt.Color(255, 255, 255));
         MejaTerisiField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         MejaTerisiField.setText("-");
-        MejaTerisiField.setPreferredSize(new java.awt.Dimension(65, 20));
+        MejaTerisiField.setPreferredSize(new java.awt.Dimension(65, 35));
 
         javax.swing.GroupLayout jPanel13Layout = new javax.swing.GroupLayout(jPanel13);
         jPanel13.setLayout(jPanel13Layout);
@@ -2222,6 +2222,12 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addComponent(MejaTerisiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
+        LogoutAdminButton.setBackground(new java.awt.Color(233, 220, 192));
+        LogoutAdminButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        LogoutAdminButton.setForeground(new java.awt.Color(51, 41, 31));
+        LogoutAdminButton.setText("Logout");
+        LogoutAdminButton.addActionListener(this::LogoutAdminButtonActionPerformed);
+
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
         jPanel1.setLayout(jPanel1Layout);
         jPanel1Layout.setHorizontalGroup(
@@ -2244,6 +2250,10 @@ public class AdminFrame extends javax.swing.JFrame {
                             .addComponent(jPanel13, javax.swing.GroupLayout.DEFAULT_SIZE, 210, Short.MAX_VALUE)
                             .addComponent(jPanel15, javax.swing.GroupLayout.DEFAULT_SIZE, 210, Short.MAX_VALUE))))
                 .addContainerGap(284, Short.MAX_VALUE))
+            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel1Layout.createSequentialGroup()
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(LogoutAdminButton)
+                .addGap(30, 30, 30))
         );
         jPanel1Layout.setVerticalGroup(
             jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -2266,7 +2276,9 @@ public class AdminFrame extends javax.swing.JFrame {
                         .addComponent(jPanel5, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(30, 30, 30)
                         .addComponent(jPanel19, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addContainerGap(163, Short.MAX_VALUE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 110, Short.MAX_VALUE)
+                .addComponent(LogoutAdminButton)
+                .addGap(30, 30, 30))
         );
 
         AdminPanel.addTab("Beranda", jPanel1);
@@ -2387,12 +2399,19 @@ public class AdminFrame extends javax.swing.JFrame {
 
             },
             new String [] {
-                "Nama", "Kategori", "Jenis", "Harga", "Stok", "Status"
+                "Nama", "Kategori", "Harga", "Stok", "Status", "Deskripsi"
             }
         ) {
+            Class[] types = new Class [] {
+                java.lang.String.class, java.lang.String.class, java.lang.Integer.class, java.lang.Integer.class, java.lang.String.class, java.lang.String.class
+            };
             boolean[] canEdit = new boolean [] {
                 false, false, false, false, false, false
             };
+
+            public Class getColumnClass(int columnIndex) {
+                return types [columnIndex];
+            }
 
             public boolean isCellEditable(int rowIndex, int columnIndex) {
                 return canEdit [columnIndex];
@@ -2541,9 +2560,9 @@ public class AdminFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jLabel18)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanel23Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 102, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jPanel8, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGroup(jPanel23Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE)
+                    .addComponent(jPanel8, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                 .addContainerGap(27, Short.MAX_VALUE))
         );
 
@@ -2717,7 +2736,7 @@ public class AdminFrame extends javax.swing.JFrame {
         LaporanPendapatanField.setBackground(new java.awt.Color(255, 255, 255));
         LaporanPendapatanField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         LaporanPendapatanField.setText("-");
-        LaporanPendapatanField.setPreferredSize(new java.awt.Dimension(65, 20));
+        LaporanPendapatanField.setPreferredSize(new java.awt.Dimension(65, 35));
 
         javax.swing.GroupLayout jPanel20Layout = new javax.swing.GroupLayout(jPanel20);
         jPanel20.setLayout(jPanel20Layout);
@@ -2726,10 +2745,10 @@ public class AdminFrame extends javax.swing.JFrame {
             .addGroup(jPanel20Layout.createSequentialGroup()
                 .addComponent(jPanel21, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addGroup(jPanel20Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(jLabel29, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(LaporanPendapatanField, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-                .addGap(0, 180, Short.MAX_VALUE))
+                .addGroup(jPanel20Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jLabel29)
+                    .addComponent(LaporanPendapatanField, javax.swing.GroupLayout.PREFERRED_SIZE, 150, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(0, 121, Short.MAX_VALUE))
         );
         jPanel20Layout.setVerticalGroup(
             jPanel20Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -2787,7 +2806,7 @@ public class AdminFrame extends javax.swing.JFrame {
         LaporanTransaksiField.setBackground(new java.awt.Color(255, 255, 255));
         LaporanTransaksiField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         LaporanTransaksiField.setText("-");
-        LaporanTransaksiField.setPreferredSize(new java.awt.Dimension(65, 20));
+        LaporanTransaksiField.setPreferredSize(new java.awt.Dimension(65, 35));
 
         javax.swing.GroupLayout jPanel22Layout = new javax.swing.GroupLayout(jPanel22);
         jPanel22.setLayout(jPanel22Layout);
@@ -2934,6 +2953,21 @@ public class AdminFrame extends javax.swing.JFrame {
         );
     }//GEN-LAST:event_MuatUlangButtonsActionPerformed
 
+    private void JumlahTransaksiFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_JumlahTransaksiFieldActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_JumlahTransaksiFieldActionPerformed
+
+    private void LogoutAdminButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_LogoutAdminButtonActionPerformed
+        // TODO add your handling code here:
+        Session.logout();
+
+        LoginFrame loginFrame = new LoginFrame();
+        loginFrame.setLocationRelativeTo(null);
+        loginFrame.setVisible(true);
+
+        this.dispose();
+    }//GEN-LAST:event_LogoutAdminButtonActionPerformed
+
     /**
      * @param args the command line arguments
      */
@@ -2975,6 +3009,7 @@ public class AdminFrame extends javax.swing.JFrame {
     private javax.swing.JTextField LaporanPendapatanField;
     private javax.swing.JTable LaporanPenjualanTabel;
     private javax.swing.JTextField LaporanTransaksiField;
+    private javax.swing.JButton LogoutAdminButton;
     private javax.swing.JComboBox<String> MejaComboBox;
     private javax.swing.JTextField MejaTerisiField;
     private javax.swing.JButton MuatUlangButtons;

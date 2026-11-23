@@ -385,6 +385,7 @@ public class LoginFrame extends javax.swing.JFrame {
 
                 AdminFrame adminFrame = new AdminFrame();
                 adminFrame.setVisible(true);
+                dispose();
             }
 
         } catch (SQLException e) {

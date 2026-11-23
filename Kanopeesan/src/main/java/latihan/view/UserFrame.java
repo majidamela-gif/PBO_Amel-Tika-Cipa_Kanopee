@@ -121,6 +121,20 @@ public class UserFrame extends javax.swing.JFrame {
                 }
         );
 
+        // Klik tabel meja untuk memilih nomor meja
+        PilihMejaTabel.addMouseListener(
+            new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    int selectedRow = PilihMejaTabel.getSelectedRow();
+                    if (selectedRow != -1) {
+                        String nomorMeja = PilihMejaTabel.getValueAt(selectedRow, 0).toString();
+                        NomorMejaField.setSelectedItem(nomorMeja);
+                    }
+                }
+            }
+        );
+
         loadTables();
         loadMenus();
         loadCart();
@@ -199,6 +213,7 @@ public class UserFrame extends javax.swing.JFrame {
                         category,
                         price,
                         stock,
+                        description,
                         status
                     FROM menus
                     WHERE category = ?
@@ -212,6 +227,7 @@ public class UserFrame extends javax.swing.JFrame {
                         category,
                         price,
                         stock,
+                        description,
                         status
                     FROM menus
                     ORDER BY id
@@ -239,10 +255,10 @@ public class UserFrame extends javax.swing.JFrame {
                     model.addRow(new Object[]{
                         rs.getString("name"),
                         rs.getString("category"),
-                        rs.getString("category"),
                         (int) rs.getDouble("price"),
                         stock,
-                        availability
+                        availability,
+                        rs.getString("description")
                     });
                 }
             }
@@ -648,26 +664,22 @@ public class UserFrame extends javax.swing.JFrame {
             return;
         }
 
-        jFormattedTextField5.setText(
+        PelangganTextField.setText(
                 Session.getUsername()
         );
 
-        jFormattedTextField6.setText(
+        NomorMejaTextField.setText(
                 selectedTableNumber
         );
 
         double total =
                 getCartTotal();
 
-        jFormattedTextField8.setText(
+        TotalHargaTextField.setText(
                 formatRupiah(total)
         );
 
-        jFormattedTextField7.setText(
-                formatRupiah(0)
-        );
-
-        jTextField4.setText("");
+        UangBayarField.setText("");
 
         DefaultTableModel model =
                 (DefaultTableModel) jTable6.getModel();
@@ -710,7 +722,7 @@ public class UserFrame extends javax.swing.JFrame {
         }
 
         String paidText =
-                jTextField4.getText()
+                UangBayarField.getText()
                         .trim()
                         .replace("Rp", "")
                         .replace(".", "")
@@ -1319,20 +1331,18 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel20 = new javax.swing.JLabel();
         jPanel8 = new javax.swing.JPanel();
         jLabel21 = new javax.swing.JLabel();
-        jFormattedTextField5 = new javax.swing.JFormattedTextField();
         jLabel22 = new javax.swing.JLabel();
-        jFormattedTextField6 = new javax.swing.JFormattedTextField();
+        PelangganTextField = new javax.swing.JTextField();
+        NomorMejaTextField = new javax.swing.JTextField();
         jLabel23 = new javax.swing.JLabel();
         jScrollPane6 = new javax.swing.JScrollPane();
         jTable6 = new javax.swing.JTable();
         jLabel24 = new javax.swing.JLabel();
         jLabel25 = new javax.swing.JLabel();
-        jLabel26 = new javax.swing.JLabel();
-        jTextField4 = new javax.swing.JTextField();
-        jFormattedTextField7 = new javax.swing.JFormattedTextField();
-        jFormattedTextField8 = new javax.swing.JFormattedTextField();
+        UangBayarField = new javax.swing.JTextField();
         BatalBayarButton = new javax.swing.JButton();
         BayarSekarangButton = new javax.swing.JButton();
+        TotalHargaTextField = new javax.swing.JTextField();
         jTabbedPane1 = new javax.swing.JTabbedPane();
         jPanel1 = new javax.swing.JPanel();
         jPanel11 = new javax.swing.JPanel();
@@ -1357,6 +1367,7 @@ public class UserFrame extends javax.swing.JFrame {
         jPanel16 = new javax.swing.JPanel();
         jLabel15 = new javax.swing.JLabel();
         JumlahTransaksiField = new javax.swing.JTextField();
+        LogoutUserButton = new javax.swing.JButton();
         jPanel2 = new javax.swing.JPanel();
         jLabel7 = new javax.swing.JLabel();
         jLabel8 = new javax.swing.JLabel();
@@ -1384,8 +1395,6 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel17 = new javax.swing.JLabel();
         jScrollPane5 = new javax.swing.JScrollPane();
         KeranjangTabel = new javax.swing.JTable();
-        jLabel18 = new javax.swing.JLabel();
-        PesananDipilihField = new javax.swing.JFormattedTextField();
         jLabel19 = new javax.swing.JLabel();
         JumlahSpinner = new javax.swing.JSpinner();
         UbahKeranjangButton = new javax.swing.JButton();
@@ -1409,15 +1418,13 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel21.setForeground(new java.awt.Color(51, 41, 31));
         jLabel21.setText("Pelanggan:");
 
-        jFormattedTextField5.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
-        jFormattedTextField5.addActionListener(this::jFormattedTextField5ActionPerformed);
-
         jLabel22.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         jLabel22.setForeground(new java.awt.Color(51, 41, 31));
         jLabel22.setText("Nomor  Meja:");
 
-        jFormattedTextField6.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
-        jFormattedTextField6.addActionListener(this::jFormattedTextField6ActionPerformed);
+        PelangganTextField.setEditable(false);
+
+        NomorMejaTextField.setEditable(false);
 
         javax.swing.GroupLayout jPanel8Layout = new javax.swing.GroupLayout(jPanel8);
         jPanel8.setLayout(jPanel8Layout);
@@ -1427,22 +1434,22 @@ public class UserFrame extends javax.swing.JFrame {
                 .addGap(14, 14, 14)
                 .addComponent(jLabel21)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jFormattedTextField5, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addComponent(PelangganTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 114, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
                 .addComponent(jLabel22)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jFormattedTextField6, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(NomorMejaTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 114, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
         jPanel8Layout.setVerticalGroup(
             jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel8Layout.createSequentialGroup()
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addContainerGap(9, Short.MAX_VALUE)
                 .addGroup(jPanel8Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel21)
-                    .addComponent(jFormattedTextField5, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel22)
-                    .addComponent(jFormattedTextField6, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(PelangganTextField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(NomorMejaTextField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addContainerGap())
         );
 
@@ -1486,15 +1493,7 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel25.setForeground(new java.awt.Color(51, 41, 31));
         jLabel25.setText("Uang Dibayar (Rp) :");
 
-        jLabel26.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jLabel26.setForeground(new java.awt.Color(51, 41, 31));
-        jLabel26.setText("Kembalian (Rp)      :");
-
-        jTextField4.addActionListener(this::jTextField4ActionPerformed);
-
-        jFormattedTextField7.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
-
-        jFormattedTextField8.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
+        UangBayarField.addActionListener(this::UangBayarFieldActionPerformed);
 
         BatalBayarButton.setBackground(new java.awt.Color(233, 220, 192));
         BatalBayarButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
@@ -1508,6 +1507,8 @@ public class UserFrame extends javax.swing.JFrame {
         BayarSekarangButton.setText("Bayar Sekarang");
         BayarSekarangButton.addActionListener(this::BayarSekarangButtonActionPerformed);
 
+        TotalHargaTextField.setEditable(false);
+
         javax.swing.GroupLayout jPanel7Layout = new javax.swing.GroupLayout(jPanel7);
         jPanel7.setLayout(jPanel7Layout);
         jPanel7Layout.setHorizontalGroup(
@@ -1518,13 +1519,11 @@ public class UserFrame extends javax.swing.JFrame {
                     .addGroup(jPanel7Layout.createSequentialGroup()
                         .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                             .addComponent(jLabel24)
-                            .addComponent(jLabel25)
-                            .addComponent(jLabel26))
+                            .addComponent(jLabel25))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                            .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, 1, Short.MAX_VALUE)
-                            .addComponent(jFormattedTextField8)
-                            .addComponent(jFormattedTextField7, javax.swing.GroupLayout.PREFERRED_SIZE, 72, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                            .addComponent(TotalHargaTextField, javax.swing.GroupLayout.DEFAULT_SIZE, 150, Short.MAX_VALUE)
+                            .addComponent(UangBayarField)))
                     .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                         .addGroup(jPanel7Layout.createSequentialGroup()
                             .addComponent(BatalBayarButton)
@@ -1551,24 +1550,16 @@ public class UserFrame extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel24)
-                    .addComponent(jFormattedTextField8, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(TotalHargaTextField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel25)
-                    .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(jPanel7Layout.createSequentialGroup()
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                        .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(jLabel26)
-                            .addComponent(jFormattedTextField7, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel7Layout.createSequentialGroup()
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 38, Short.MAX_VALUE)
-                        .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(BayarSekarangButton)
-                            .addComponent(BatalBayarButton))
-                        .addGap(36, 36, 36))))
+                    .addComponent(UangBayarField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 35, Short.MAX_VALUE)
+                .addGroup(jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(BayarSekarangButton)
+                    .addComponent(BatalBayarButton))
+                .addGap(36, 36, 36))
         );
 
         javax.swing.GroupLayout jDialog1Layout = new javax.swing.GroupLayout(jDialog1.getContentPane());
@@ -1731,7 +1722,7 @@ public class UserFrame extends javax.swing.JFrame {
                 .addContainerGap()
                 .addComponent(jLabel6)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(MejaSayaField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(MejaSayaField, javax.swing.GroupLayout.PREFERRED_SIZE, 35, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
@@ -1760,7 +1751,7 @@ public class UserFrame extends javax.swing.JFrame {
         PesananDalamProsesField.setBackground(new java.awt.Color(255, 255, 255));
         PesananDalamProsesField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         PesananDalamProsesField.setText("-");
-        PesananDalamProsesField.setPreferredSize(new java.awt.Dimension(65, 20));
+        PesananDalamProsesField.setPreferredSize(new java.awt.Dimension(65, 35));
 
         javax.swing.GroupLayout jPanel13Layout = new javax.swing.GroupLayout(jPanel13);
         jPanel13.setLayout(jPanel13Layout);
@@ -1809,7 +1800,7 @@ public class UserFrame extends javax.swing.JFrame {
         JumlahTransaksiField.setBackground(new java.awt.Color(255, 255, 255));
         JumlahTransaksiField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         JumlahTransaksiField.setText("-");
-        JumlahTransaksiField.setPreferredSize(new java.awt.Dimension(65, 20));
+        JumlahTransaksiField.setPreferredSize(new java.awt.Dimension(65, 35));
 
         javax.swing.GroupLayout jPanel15Layout = new javax.swing.GroupLayout(jPanel15);
         jPanel15.setLayout(jPanel15Layout);
@@ -1833,6 +1824,12 @@ public class UserFrame extends javax.swing.JFrame {
                 .addComponent(JumlahTransaksiField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
+        LogoutUserButton.setBackground(new java.awt.Color(233, 220, 192));
+        LogoutUserButton.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
+        LogoutUserButton.setForeground(new java.awt.Color(51, 41, 31));
+        LogoutUserButton.setText("Logout");
+        LogoutUserButton.addActionListener(this::LogoutUserButtonActionPerformed);
+
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
         jPanel1.setLayout(jPanel1Layout);
         jPanel1Layout.setHorizontalGroup(
@@ -1850,6 +1847,10 @@ public class UserFrame extends javax.swing.JFrame {
                     .addComponent(jLabel4)
                     .addComponent(jPanel11, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addContainerGap(42, Short.MAX_VALUE))
+            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel1Layout.createSequentialGroup()
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(LogoutUserButton)
+                .addGap(30, 30, 30))
         );
         jPanel1Layout.setVerticalGroup(
             jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -1866,7 +1867,9 @@ public class UserFrame extends javax.swing.JFrame {
                     .addComponent(jPanel6, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addGap(18, 18, 18)
                 .addComponent(jPanel11, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(105, Short.MAX_VALUE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 52, Short.MAX_VALUE)
+                .addComponent(LogoutUserButton)
+                .addGap(30, 30, 30))
         );
 
         jTabbedPane1.addTab("Beranda", jPanel1);
@@ -1975,11 +1978,11 @@ public class UserFrame extends javax.swing.JFrame {
 
             },
             new String [] {
-                "Menu", "Kategori", "Jenis", "Harga", "Stok", "Ketersediaan"
+                "Menu", "Kategori", "Harga", "Stok", "Ketersediaan", "Deskripsi"
             }
         ) {
             Class[] types = new Class [] {
-                java.lang.String.class, java.lang.String.class, java.lang.String.class, java.lang.Integer.class, java.lang.Integer.class, java.lang.String.class
+                java.lang.String.class, java.lang.String.class, java.lang.Integer.class, java.lang.Integer.class, java.lang.String.class, java.lang.String.class
             };
             boolean[] canEdit = new boolean [] {
                 false, false, false, false, false, false
@@ -2069,6 +2072,7 @@ public class UserFrame extends javax.swing.JFrame {
         jLabel14.setForeground(new java.awt.Color(47, 75, 58));
         jLabel14.setText("Keranjang");
 
+        TotalKeranjangField.setEditable(false);
         TotalKeranjangField.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
         TotalKeranjangField.addActionListener(this::TotalKeranjangFieldActionPerformed);
 
@@ -2105,14 +2109,6 @@ public class UserFrame extends javax.swing.JFrame {
         });
         jScrollPane5.setViewportView(KeranjangTabel);
 
-        jLabel18.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
-        jLabel18.setForeground(new java.awt.Color(51, 41, 31));
-        jLabel18.setText("Pesanan");
-
-        PesananDipilihField.setEditable(false);
-        PesananDipilihField.setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(new javax.swing.text.DateFormatter(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT))));
-        PesananDipilihField.addActionListener(this::PesananDipilihFieldActionPerformed);
-
         jLabel19.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         jLabel19.setForeground(new java.awt.Color(51, 41, 31));
         jLabel19.setText("Jumlah baru");
@@ -2134,16 +2130,12 @@ public class UserFrame extends javax.swing.JFrame {
                     .addComponent(jLabel14)
                     .addGroup(jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
                         .addGroup(jPanel4Layout.createSequentialGroup()
-                            .addComponent(jLabel18)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(PesananDipilihField, javax.swing.GroupLayout.PREFERRED_SIZE, 126, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                             .addComponent(jLabel19)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                             .addComponent(JumlahSpinner, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                            .addGap(18, 18, 18)
                             .addComponent(UbahKeranjangButton)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                             .addComponent(HapusKeranjangButton)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addComponent(jLabel17)
@@ -2165,8 +2157,6 @@ public class UserFrame extends javax.swing.JFrame {
                 .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 175, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jLabel18)
-                    .addComponent(PesananDipilihField, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel19)
                     .addComponent(JumlahSpinner, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(UbahKeranjangButton)
@@ -2338,26 +2328,14 @@ public class UserFrame extends javax.swing.JFrame {
         // TODO add your handling code here:
     }//GEN-LAST:event_TotalKeranjangFieldActionPerformed
 
-    private void PesananDipilihFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_PesananDipilihFieldActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_PesananDipilihFieldActionPerformed
-
     private void UbahKeranjangButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_UbahKeranjangButtonActionPerformed
         // TODO add your handling code here:
         updateCartItem();
     }//GEN-LAST:event_UbahKeranjangButtonActionPerformed
 
-    private void jFormattedTextField5ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jFormattedTextField5ActionPerformed
+    private void UangBayarFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_UangBayarFieldActionPerformed
         // TODO add your handling code here:
-    }//GEN-LAST:event_jFormattedTextField5ActionPerformed
-
-    private void jFormattedTextField6ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jFormattedTextField6ActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_jFormattedTextField6ActionPerformed
-
-    private void jTextField4ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jTextField4ActionPerformed
-        // TODO add your handling code here:
-    }//GEN-LAST:event_jTextField4ActionPerformed
+    }//GEN-LAST:event_UangBayarFieldActionPerformed
 
     private void BayarSekarangButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BayarSekarangButtonActionPerformed
         // TODO add your handling code here:
@@ -2378,6 +2356,17 @@ public class UserFrame extends javax.swing.JFrame {
         // TODO add your handling code here:
         jDialog1.setVisible(false);
     }//GEN-LAST:event_BatalBayarButtonActionPerformed
+
+    private void LogoutUserButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_LogoutUserButtonActionPerformed
+        // TODO add your handling code here:
+        Session.logout();
+
+        LoginFrame loginFrame = new LoginFrame();
+        loginFrame.setLocationRelativeTo(null);
+        loginFrame.setVisible(true);
+
+        this.dispose();
+    }//GEN-LAST:event_LogoutUserButtonActionPerformed
 
     /**
      * @param args the command line arguments
@@ -2416,22 +2405,22 @@ public class UserFrame extends javax.swing.JFrame {
     private javax.swing.JTextField JumlahTransaksiField;
     private javax.swing.JComboBox<String> KategoriMenuComboBox;
     private javax.swing.JTable KeranjangTabel;
+    private javax.swing.JButton LogoutUserButton;
     private javax.swing.JTextField MejaSayaField;
     private javax.swing.JButton MuatUlangButton;
     private javax.swing.JComboBox<String> NomorMejaField;
+    private javax.swing.JTextField NomorMejaTextField;
+    private javax.swing.JTextField PelangganTextField;
     private javax.swing.JTextField PesananDalamProsesField;
-    private javax.swing.JFormattedTextField PesananDipilihField;
     private javax.swing.JButton PilihMejaButton;
     private javax.swing.JTable PilihMejaTabel;
     private javax.swing.JTable RiwayatTransaksiTabel;
     private javax.swing.JButton TambahKeranjangButton;
+    private javax.swing.JTextField TotalHargaTextField;
     private javax.swing.JFormattedTextField TotalKeranjangField;
+    private javax.swing.JTextField UangBayarField;
     private javax.swing.JButton UbahKeranjangButton;
     private javax.swing.JDialog jDialog1;
-    private javax.swing.JFormattedTextField jFormattedTextField5;
-    private javax.swing.JFormattedTextField jFormattedTextField6;
-    private javax.swing.JFormattedTextField jFormattedTextField7;
-    private javax.swing.JFormattedTextField jFormattedTextField8;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel10;
     private javax.swing.JLabel jLabel11;
@@ -2441,7 +2430,6 @@ public class UserFrame extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel15;
     private javax.swing.JLabel jLabel16;
     private javax.swing.JLabel jLabel17;
-    private javax.swing.JLabel jLabel18;
     private javax.swing.JLabel jLabel19;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel20;
@@ -2450,7 +2438,6 @@ public class UserFrame extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel23;
     private javax.swing.JLabel jLabel24;
     private javax.swing.JLabel jLabel25;
-    private javax.swing.JLabel jLabel26;
     private javax.swing.JLabel jLabel28;
     private javax.swing.JLabel jLabel29;
     private javax.swing.JLabel jLabel3;
@@ -2488,6 +2475,5 @@ public class UserFrame extends javax.swing.JFrame {
     private javax.swing.JScrollPane jScrollPane6;
     private javax.swing.JTabbedPane jTabbedPane1;
     private javax.swing.JTable jTable6;
-    private javax.swing.JTextField jTextField4;
     // End of variables declaration//GEN-END:variables
 }
