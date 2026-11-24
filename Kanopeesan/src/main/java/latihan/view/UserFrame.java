@@ -382,7 +382,7 @@ public class UserFrame extends javax.swing.JFrame {
                         DaftarMenuTabel
                                 .getValueAt(
                                         selectedRow,
-                                        3
+                                        2
                                 )
                                 .toString()
                 );
@@ -392,7 +392,7 @@ public class UserFrame extends javax.swing.JFrame {
                         DaftarMenuTabel
                                 .getValueAt(
                                         selectedRow,
-                                        4
+                                        3
                                 )
                                 .toString()
                 );
@@ -401,7 +401,7 @@ public class UserFrame extends javax.swing.JFrame {
                 DaftarMenuTabel
                         .getValueAt(
                                 selectedRow,
-                                5
+                                4
                         )
                         .toString();
 
