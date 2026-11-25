@@ -10,9 +10,9 @@ Sistem ini memiliki dua jenis pengguna, yaitu Pelanggan (Customer) dan Admin, de
 
 | No. | Nama | NIM | Pembagian |
 |-----|------|-----|-----------|
-| 1. | Syifa Dwi Amirah | 140810250012 | Frame: Daftar Menu User, Keranjang User, Pembayaran User, Riwayat Transaksi User |
+| 1. | Syifa Dwi Amirah | 140810250012 | Frame: Daftar Menu User, Keranjang User, Pembayaran User |
 | 2. | Amela Dzakiah Majid | 140810250051 | Frame: All Admin (kecuali kelola menu) & Menyesuaikan kembali semua Frame, Database |
-| 3. | Atika Shafira | 140810250093 | Frame: Kelola Menu Admin, Beranda User, Pilih Meja User |
+| 3. | Atika Shafira | 140810250093 | Frame: Kelola Menu Admin, Beranda User, Pilih Meja User, Riwayat Transaksi User |
 
 Pembagian dapat bertambah atau berubah seiring waktu
 
