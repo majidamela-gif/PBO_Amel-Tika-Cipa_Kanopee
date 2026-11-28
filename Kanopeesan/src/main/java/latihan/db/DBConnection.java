@@ -13,10 +13,7 @@ public class DBConnection {
     private static final String PASSWORD = "";
 
     private static final String URL =
-            "jdbc:mysql://" + HOST + ":" + PORT + "/" + DATABASE
-            + "?useSSL=false"
-            + "&serverTimezone=Asia/Jakarta"
-            + "&allowPublicKeyRetrieval=true";
+            "jdbc:mysql://" + HOST + ":" + PORT + "/" + DATABASE;
 
     private DBConnection() {
     }
@@ -27,10 +24,7 @@ public class DBConnection {
 
     public static Connection getConnectionWithoutDatabase() throws SQLException {
         String url =
-                "jdbc:mysql://" + HOST + ":" + PORT
-                + "?useSSL=false"
-                + "&serverTimezone=Asia/Jakarta"
-                + "&allowPublicKeyRetrieval=true";
+                "jdbc:mysql://" + HOST + ":" + PORT;
 
         return DriverManager.getConnection(url, USERNAME, PASSWORD);
     }

@@ -4,15 +4,22 @@
  */
 package latihan.view;
 
-import latihan.db.DBConnection;
+import latihan.entity.DiningTable;
+import latihan.entity.Menu;
+import latihan.entity.Order;
+import latihan.model.CartItemModel;
+import latihan.model.OrderDetailModel;
+import latihan.model.OrderHistoryModel;
+import latihan.model.UserDashboardModel;
+import latihan.repository.DashboardRepository;
+import latihan.repository.DiningTableRepository;
+import latihan.repository.MenuRepository;
+import latihan.repository.OrderRepository;
 import latihan.util.Session;
 
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import java.text.NumberFormat;
@@ -33,37 +40,20 @@ import javax.swing.table.DefaultTableModel;
 public class UserFrame extends javax.swing.JFrame {
     
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(UserFrame.class.getName());
-    private final List<CartItem> cart = new ArrayList<>();
+
+    private final MenuRepository menuRepository = new MenuRepository();
+    private final DiningTableRepository tableRepository = new DiningTableRepository();
+    private final OrderRepository orderRepository = new OrderRepository();
+    private final DashboardRepository dashboardRepository = new DashboardRepository();
+    
+    private final List<CartItemModel> cart = new ArrayList<>();
+    private final List<Menu> menusByRow = new ArrayList<>();
+    
     private int selectedTableId = -1;
     private String selectedTableNumber = null;
 
     private final NumberFormat currencyFormat =
-            NumberFormat.getCurrencyInstance(
-                    new Locale("id", "ID")
-            );
-
-    private static class CartItem {
-        int menuId;
-        String name;
-        double price;
-        int quantity;
-
-        CartItem(
-                int menuId,
-                String name,
-                double price,
-                int quantity
-        ) {
-            this.menuId = menuId;
-            this.name = name;
-            this.price = price;
-            this.quantity = quantity;
-        }
-
-        double getSubtotal() {
-            return price * quantity;
-        }
-    }
+            NumberFormat.getCurrencyInstance(new Locale("id", "ID"));
 
     /**
      * Creates new form UserFrame
@@ -73,23 +63,8 @@ public class UserFrame extends javax.swing.JFrame {
         setLocationRelativeTo(null);
 
         // Spinner minimal 1
-        JumlahPesananSpinner.setModel(
-                new SpinnerNumberModel(
-                        1,
-                        1,
-                        100,
-                        1
-                )
-        );
-
-        JumlahSpinner.setModel(
-                new SpinnerNumberModel(
-                        1,
-                        1,
-                        100,
-                        1
-                )
-        );
+        JumlahPesananSpinner.setModel(new SpinnerNumberModel(1, 1, 100, 1));
+        JumlahSpinner.setModel(new SpinnerNumberModel(1, 1, 100, 1));
 
         // Dialog pembayaran
         jDialog1.setModal(true);
@@ -100,40 +75,29 @@ public class UserFrame extends javax.swing.JFrame {
         // Kategori
         KategoriMenuComboBox.setModel(
                 new DefaultComboBoxModel<>(
-                        new String[]{
-                            "Semua",
-                            "Makanan",
-                            "Minuman",
-                            "Snack"
-                        }
-                )
-        );
+                        new String[]{"Semua", "Makanan", "Minuman", "Snack"}));
 
         // Klik history untuk melihat detail
-        RiwayatTransaksiTabel.addMouseListener(
-                new MouseAdapter() {
-                    @Override
-                    public void mouseClicked(MouseEvent e) {
-                        if (e.getClickCount() == 1) {
-                            loadSelectedTransactionDetail();
-                        }
-                    }
-                }
-        );
-
-        // Klik tabel meja untuk memilih nomor meja
-        PilihMejaTabel.addMouseListener(
-            new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    int selectedRow = PilihMejaTabel.getSelectedRow();
-                    if (selectedRow != -1) {
-                        String nomorMeja = PilihMejaTabel.getValueAt(selectedRow, 0).toString();
-                        NomorMejaField.setSelectedItem(nomorMeja);
-                    }
+        RiwayatTransaksiTabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 1) {
+                    loadSelectedTransactionDetail();
                 }
             }
-        );
+        });
+
+        // Klik tabel meja untuk memilih nomor meja
+        PilihMejaTabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int selectedRow = PilihMejaTabel.getSelectedRow();
+                if (selectedRow != -1) {
+                    String nomorMeja = PilihMejaTabel.getValueAt(selectedRow, 0).toString();
+                    NomorMejaField.setSelectedItem(nomorMeja);
+                }
+            }
+        });
 
         loadTables();
         loadMenus();
@@ -142,127 +106,41 @@ public class UserFrame extends javax.swing.JFrame {
         updateDashboard();
     }
     
-    private String formatRupiah(double amount) {
+     private String formatRupiah(double amount) {
         return currencyFormat.format(amount).replace("Rp", "Rp ");
     }
 
+    private void showDatabaseError(SQLException e) {
+        JOptionPane.showMessageDialog(
+                this,
+                "Terjadi kesalahan database.\n" + e.getMessage(),
+                "Database Error",
+                JOptionPane.ERROR_MESSAGE
+        );
+        e.printStackTrace();
+    }
+
+    private void showWarning(String message, String title) {
+        JOptionPane.showMessageDialog(this, message, title, JOptionPane.WARNING_MESSAGE);
+    }
+
     private void loadTables() {
-        DefaultTableModel model =
-                (DefaultTableModel) PilihMejaTabel.getModel();
+        DefaultTableModel model = (DefaultTableModel) PilihMejaTabel.getModel();
         model.setRowCount(0);
         NomorMejaField.removeAllItems();
 
-        String sql = """
-                SELECT id, table_number, capacity, status
-                FROM dining_tables
-                ORDER BY id
-                """;
-
-        try (
-                Connection conn = DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql);
-                ResultSet rs = stmt.executeQuery()
-        ) {
-            while (rs.next()) {
-                int id = rs.getInt("id");
-                String number = rs.getString("table_number");
-                int capacity = rs.getInt("capacity");
-                String status = rs.getString("status");
+        try {
+            for (DiningTable t : tableRepository.findAll()) {
                 model.addRow(new Object[]{
-                    number,
-                    capacity,
-                    status
+                    t.getTableNumber(),
+                    t.getCapacity(),
+                    t.getStatus()
                 });
 
-                if ("TERSEDIA".equalsIgnoreCase(status)) {
-                    NomorMejaField.addItem(number);
+                if (t.isAvailable()) {
+                    NomorMejaField.addItem(t.getTableNumber());
                 }
             }
-
-        } catch (SQLException e) {
-            showDatabaseError(e);
-        }
-    }
-
-    private void loadMenus() {
-        loadMenusByCategory(
-                KategoriMenuComboBox.getSelectedItem() == null
-                        ? "Semua"
-                        : KategoriMenuComboBox
-                                .getSelectedItem()
-                                .toString()
-        );
-    }
-
-    private void loadMenusByCategory(String category) {
-        DefaultTableModel model =
-                (DefaultTableModel) DaftarMenuTabel.getModel();
-
-        model.setRowCount(0);
-        String sql;
-        boolean filter =
-                category != null
-                && !category.equalsIgnoreCase("Semua");
-
-        if (filter) {
-            sql = """
-                    SELECT
-                        id,
-                        name,
-                        category,
-                        price,
-                        stock,
-                        description,
-                        status
-                    FROM menus
-                    WHERE category = ?
-                    ORDER BY id
-                    """;
-        } else {
-            sql = """
-                    SELECT
-                        id,
-                        name,
-                        category,
-                        price,
-                        stock,
-                        description,
-                        status
-                    FROM menus
-                    ORDER BY id
-                    """;
-        }
-
-        try (
-                Connection conn = DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-            if (filter) {
-                stmt.setString(1, category);
-            }
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    int stock = rs.getInt("stock");
-                    String status = rs.getString("status");
-                    String availability =
-                            stock > 0
-                                    && "TERSEDIA".equalsIgnoreCase(status)
-                                    ? "Tersedia"
-                                    : "Habis";
-
-                    model.addRow(new Object[]{
-                        rs.getString("name"),
-                        rs.getString("category"),
-                        (int) rs.getDouble("price"),
-                        stock,
-                        availability,
-                        rs.getString("description")
-                    });
-                }
-            }
-
         } catch (SQLException e) {
             showDatabaseError(e);
         }
@@ -272,70 +150,65 @@ public class UserFrame extends javax.swing.JFrame {
         Object selected = NomorMejaField.getSelectedItem();
 
         if (selected == null) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Silakan pilih nomor meja.",
-                    "Pilih Meja",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Silakan pilih nomor meja.", "Pilih Meja");
             return;
         }
 
-        String tableNumber = selected.toString();
+        try {
+            DiningTable table = tableRepository.findByNumber(selected.toString());
 
-        String sql = """
-                SELECT id, table_number, capacity, status
-                FROM dining_tables
-                WHERE table_number = ?
-                """;
-
-        try (
-                Connection conn = DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-            stmt.setString(1, tableNumber);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) {
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "Meja tidak ditemukan.",
-                            "Pilih Meja",
-                            JOptionPane.ERROR_MESSAGE
-                    );
-                    return;
-                }
-
-                String status = rs.getString("status");
-
-                if (!"TERSEDIA".equalsIgnoreCase(status)) {
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "Meja tersebut sedang digunakan.",
-                            "Pilih Meja",
-                            JOptionPane.WARNING_MESSAGE
-                    );
-                    loadTables();
-                    return;
-                }
-
-                selectedTableId = rs.getInt("id");
-                selectedTableNumber = rs.getString("table_number");
-
-                MejaSayaField.setText(
-                        selectedTableNumber
-                );
-
+            if (table == null) {
                 JOptionPane.showMessageDialog(
-                        this,
-                        "Meja "
-                        + selectedTableNumber
-                        + " berhasil dipilih.",
-                        "Pilih Meja",
-                        JOptionPane.INFORMATION_MESSAGE
-                );
+                        this, "Meja tidak ditemukan.", "Pilih Meja",
+                        JOptionPane.ERROR_MESSAGE);
+                return;
             }
 
+            if (!table.isAvailable()) {
+                showWarning("Meja tersebut sedang digunakan.", "Pilih Meja");
+                loadTables();
+                return;
+            }
+
+            selectedTableId = table.getId();
+            selectedTableNumber = table.getTableNumber();
+
+            MejaSayaField.setText(selectedTableNumber);
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Meja " + selectedTableNumber + " berhasil dipilih.",
+                    "Pilih Meja",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+        } catch (SQLException e) {
+            showDatabaseError(e);
+        }
+    }
+
+    private void loadMenus() {
+        Object selected = KategoriMenuComboBox.getSelectedItem();
+        loadMenusByCategory(selected == null ? "Semua" : selected.toString());
+    }
+
+    private void loadMenusByCategory(String category) {
+        DefaultTableModel model = (DefaultTableModel) DaftarMenuTabel.getModel();
+        model.setRowCount(0);
+        menusByRow.clear();
+
+        try {
+            for (Menu m : menuRepository.findByCategory(category)) {
+                menusByRow.add(m);
+                model.addRow(new Object[]{
+                    m.getName(),
+                    m.getCategory(),
+                    (int) m.getPrice(),
+                    m.getStock(),
+                    m.isAvailable() ? "Tersedia" : "Habis",
+                    m.getDescription()
+                });
+            }
         } catch (SQLException e) {
             showDatabaseError(e);
         }
@@ -344,292 +217,142 @@ public class UserFrame extends javax.swing.JFrame {
     private void addToCart() {
         int selectedRow = DaftarMenuTabel.getSelectedRow();
 
-        if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Silakan pilih menu terlebih dahulu.",
-                    "Keranjang",
-                    JOptionPane.WARNING_MESSAGE
-            );
+        if (selectedRow == -1 || selectedRow >= menusByRow.size()) {
+            showWarning("Silakan pilih menu terlebih dahulu.", "Keranjang");
             return;
         }
 
         if (selectedTableId == -1) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Silakan pilih meja terlebih dahulu.",
-                    "Keranjang",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Silakan pilih meja terlebih dahulu.", "Keranjang");
             return;
         }
 
-        int quantity =
-                ((Number) JumlahPesananSpinner
-                        .getValue())
-                        .intValue();
+        int quantity = ((Number) JumlahPesananSpinner.getValue()).intValue();
 
-        String menuName =
-                DaftarMenuTabel
-                        .getValueAt(
-                                selectedRow,
-                                0
-                        )
-                        .toString();
+        try {
+            // Ambil data terbaru dari database (stok bisa berubah)
+            Menu menu = menuRepository.findById(menusByRow.get(selectedRow).getId());
 
-        double price =
-                Double.parseDouble(
-                        DaftarMenuTabel
-                                .getValueAt(
-                                        selectedRow,
-                                        2
-                                )
-                                .toString()
-                );
-
-        int stock =
-                Integer.parseInt(
-                        DaftarMenuTabel
-                                .getValueAt(
-                                        selectedRow,
-                                        3
-                                )
-                                .toString()
-                );
-
-        String availability =
-                DaftarMenuTabel
-                        .getValueAt(
-                                selectedRow,
-                                4
-                        )
-                        .toString();
-
-        if (!"Tersedia".equalsIgnoreCase(
-                availability
-        )) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Menu tersebut sedang habis.",
-                    "Keranjang",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return;
-        }
-
-        if (quantity > stock) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Jumlah melebihi stok.\n"
-                    + "Stok tersedia: "
-                    + stock,
-                    "Keranjang",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return;
-        }
-
-        int menuId = getMenuIdByName(menuName);
-
-        if (menuId == -1) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Menu tidak ditemukan di database.",
-                    "Keranjang",
-                    JOptionPane.ERROR_MESSAGE
-            );
-            return;
-        }
-
-        // Kalau menu sudah ada di cart
-        for (CartItem item : cart) {
-            if (item.menuId == menuId) {
-                int newQuantity = item.quantity + quantity;
-                if (newQuantity > stock) {
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "Jumlah pesanan melebihi stok.",
-                            "Keranjang",
-                            JOptionPane.WARNING_MESSAGE
-                    );
-                    return;
-                }
-
-                item.quantity = newQuantity;
-                loadCart();
+            if (menu == null) {
+                JOptionPane.showMessageDialog(
+                        this, "Menu tidak ditemukan di database.", "Keranjang",
+                        JOptionPane.ERROR_MESSAGE);
                 return;
             }
-        }
 
-        cart.add(
-                new CartItem(
-                        menuId,
-                        menuName,
-                        price,
-                        quantity
-                )
-        );
+            if (!menu.isAvailable()) {
+                showWarning("Menu tersebut sedang habis.", "Keranjang");
+                loadMenus();
+                return;
+            }
 
-        loadCart();
+            if (quantity > menu.getStock()) {
+                showWarning(
+                        "Jumlah melebihi stok.\nStok tersedia: " + menu.getStock(),
+                        "Keranjang");
+                return;
+            }
 
-        JOptionPane.showMessageDialog(
-                this,
-                menuName
-                + " berhasil ditambahkan ke keranjang.",
-                "Keranjang",
-                JOptionPane.INFORMATION_MESSAGE
-        );
-    }
+            // Kalau menu sudah ada di cart
+            for (CartItemModel item : cart) {
+                if (item.getMenuId() == menu.getId()) {
+                    int newQuantity = item.getQuantity() + quantity;
 
-    private int getMenuIdByName(String name) {
-        String sql = """
-                SELECT id
-                FROM menus
-                WHERE name = ?
-                LIMIT 1
-                """;
+                    if (newQuantity > menu.getStock()) {
+                        showWarning("Jumlah pesanan melebihi stok.", "Keranjang");
+                        return;
+                    }
 
-        try (
-                Connection conn = DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-            stmt.setString(1, name);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("id");
+                    item.setQuantity(newQuantity);
+                    loadCart();
+                    return;
                 }
             }
+
+            cart.add(new CartItemModel(
+                    menu.getId(), menu.getName(), menu.getPrice(), quantity));
+
+            loadCart();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    menu.getName() + " berhasil ditambahkan ke keranjang.",
+                    "Keranjang",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
 
         } catch (SQLException e) {
             showDatabaseError(e);
         }
-        return -1;
     }
 
     private void loadCart() {
-        DefaultTableModel model =
-                (DefaultTableModel) KeranjangTabel.getModel();
-
+        DefaultTableModel model = (DefaultTableModel) KeranjangTabel.getModel();
         model.setRowCount(0);
-        double total = 0;
 
-        for (CartItem item : cart) {
-            double subtotal = item.getSubtotal();
-            total += subtotal;
-
+        for (CartItemModel item : cart) {
             model.addRow(new Object[]{
-                item.name,
-                (int) item.price,
-                item.quantity,
-                (int) subtotal
+                item.getName(),
+                (int) item.getPrice(),
+                item.getQuantity(),
+                (int) item.getSubtotal()
             });
         }
 
-        TotalKeranjangField.setText(
-                formatRupiah(total)
-        );
+        TotalKeranjangField.setText(formatRupiah(getCartTotal()));
     }
 
     private void updateCartItem() {
-        int selectedRow =
-                KeranjangTabel.getSelectedRow();
+        int selectedRow = KeranjangTabel.getSelectedRow();
 
         if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Pilih menu di keranjang terlebih dahulu.",
-                    "Keranjang",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Pilih menu di keranjang terlebih dahulu.", "Keranjang");
             return;
         }
 
-        int newQuantity =
-                ((Number) JumlahSpinner
-                        .getValue())
-                        .intValue();
+        int newQuantity = ((Number) JumlahSpinner.getValue()).intValue();
+        CartItemModel item = cart.get(selectedRow);
 
-        CartItem item =
-                cart.get(selectedRow);
+        try {
+            Menu menu = menuRepository.findById(item.getMenuId());
 
-        int stock =
-                getMenuStock(item.menuId);
-
-        if (stock < 0) {
-            return;
-        }
-
-        if (newQuantity > stock) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Jumlah melebihi stok.\n"
-                    + "Stok tersedia: "
-                    + stock,
-                    "Keranjang",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return;
-        }
-
-        item.quantity = newQuantity;
-        loadCart();
-    }
-
-    private int getMenuStock(int menuId) {
-        String sql = """
-                SELECT stock
-                FROM menus
-                WHERE id = ?
-                """;
-
-        try (
-                Connection conn = DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-            stmt.setInt(1, menuId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("stock");
-                }
+            if (menu == null) {
+                return;
             }
+
+            if (newQuantity > menu.getStock()) {
+                showWarning(
+                        "Jumlah melebihi stok.\nStok tersedia: " + menu.getStock(),
+                        "Keranjang");
+                return;
+            }
+
+            item.setQuantity(newQuantity);
+            loadCart();
 
         } catch (SQLException e) {
             showDatabaseError(e);
         }
-        return -1;
     }
 
     private void removeCartItem() {
-        int selectedRow =
-                KeranjangTabel.getSelectedRow();
+        int selectedRow = KeranjangTabel.getSelectedRow();
 
         if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Pilih menu yang ingin dihapus.",
-                    "Keranjang",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Pilih menu yang ingin dihapus.", "Keranjang");
             return;
         }
 
-        CartItem item =
-                cart.get(selectedRow);
+        CartItemModel item = cart.get(selectedRow);
 
-        int confirm =
-                JOptionPane.showConfirmDialog(
-                        this,
-                        "Hapus "
-                        + item.name
-                        + " dari keranjang?",
-                        "Konfirmasi",
-                        JOptionPane.YES_NO_OPTION
-                );
+        int confirm = JOptionPane.showConfirmDialog(
+                this,
+                "Hapus " + item.getName() + " dari keranjang?",
+                "Konfirmasi",
+                JOptionPane.YES_NO_OPTION
+        );
 
-        if (confirm ==
-                JOptionPane.YES_OPTION) {
+        if (confirm == JOptionPane.YES_OPTION) {
             cart.remove(selectedRow);
             loadCart();
         }
@@ -637,7 +360,7 @@ public class UserFrame extends javax.swing.JFrame {
 
     private double getCartTotal() {
         double total = 0;
-        for (CartItem item : cart) {
+        for (CartItemModel item : cart) {
             total += item.getSubtotal();
         }
         return total;
@@ -645,52 +368,28 @@ public class UserFrame extends javax.swing.JFrame {
 
     private void openCheckoutDialog() {
         if (selectedTableId == -1) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Silakan pilih meja terlebih dahulu.",
-                    "Checkout",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Silakan pilih meja terlebih dahulu.", "Checkout");
             return;
         }
 
         if (cart.isEmpty()) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Keranjang masih kosong.",
-                    "Checkout",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Keranjang masih kosong.", "Checkout");
             return;
         }
 
-        PelangganTextField.setText(
-                Session.getUsername()
-        );
-
-        NomorMejaTextField.setText(
-                selectedTableNumber
-        );
-
-        double total =
-                getCartTotal();
-
-        TotalHargaTextField.setText(
-                formatRupiah(total)
-        );
-
+        PelangganTextField.setText(Session.getUsername());
+        NomorMejaTextField.setText(selectedTableNumber);
+        TotalHargaTextField.setText(formatRupiah(getCartTotal()));
         UangBayarField.setText("");
 
-        DefaultTableModel model =
-                (DefaultTableModel) jTable6.getModel();
-
+        DefaultTableModel model = (DefaultTableModel) jTable6.getModel();
         model.setRowCount(0);
 
-        for (CartItem item : cart) {
+        for (CartItemModel item : cart) {
             model.addRow(new Object[]{
-                item.name,
-                item.quantity,
-                (int) item.price,
+                item.getName(),
+                item.getQuantity(),
+                (int) item.getPrice(),
                 (int) item.getSubtotal()
             });
         }
@@ -702,305 +401,63 @@ public class UserFrame extends javax.swing.JFrame {
 
     private void processPayment() {
         if (cart.isEmpty()) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Keranjang kosong.",
-                    "Pembayaran",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Keranjang kosong.", "Pembayaran");
             return;
         }
 
         if (selectedTableId == -1) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Meja belum dipilih.",
-                    "Pembayaran",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Meja belum dipilih.", "Pembayaran");
             return;
         }
 
-        String paidText =
-                UangBayarField.getText()
-                        .trim()
-                        .replace("Rp", "")
-                        .replace(".", "")
-                        .replace(",", "");
+        String paidText = UangBayarField.getText()
+                .trim()
+                .replace("Rp", "")
+                .replace(".", "")
+                .replace(",", "");
 
         if (paidText.isEmpty()) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Masukkan nominal pembayaran.",
-                    "Pembayaran",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Masukkan nominal pembayaran.", "Pembayaran");
             return;
         }
 
         double paid;
 
         try {
-            paid = Double.parseDouble(
-                    paidText
-            );
-
+            paid = Double.parseDouble(paidText);
         } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Nominal pembayaran tidak valid.",
-                    "Pembayaran",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Nominal pembayaran tidak valid.", "Pembayaran");
             return;
         }
 
         double total = getCartTotal();
 
         if (paid < total) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Uang yang dibayar kurang.\n"
-                    + "Total: "
-                    + formatRupiah(total),
-                    "Pembayaran",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning(
+                    "Uang yang dibayar kurang.\nTotal: " + formatRupiah(total),
+                    "Pembayaran");
             return;
         }
 
         double change = paid - total;
 
-        Connection conn = null;
+        Order order = new Order();
+        order.setUserId(Session.getUserId());
+        order.setTableId(selectedTableId);
+        order.setTotal(total);
+        order.setPaid(paid);
+        order.setChangeAmount(change);
+
         try {
-            conn = DBConnection.getConnection();
-            conn.setAutoCommit(false);
-
-            /*
-            * Lock meja selama transaksi.
-            */
-            String tableSql = """
-                    SELECT status
-                    FROM dining_tables
-                    WHERE id = ?
-                    FOR UPDATE
-                    """;
-
-            try (
-                    PreparedStatement tableStmt =
-                            conn.prepareStatement(
-                                    tableSql
-                            )
-            ) {
-                tableStmt.setInt(
-                        1,
-                        selectedTableId
-                );
-                try (
-                        ResultSet rs =
-                                tableStmt.executeQuery()
-                ) {
-                    if (!rs.next()) {
-                        throw new SQLException(
-                                "Meja tidak ditemukan."
-                        );
-                    }
-
-                    if (!"TERSEDIA".equalsIgnoreCase(
-                            rs.getString("status")
-                    )) {
-
-                        throw new SQLException(
-                                "Meja sudah digunakan oleh pelanggan lain."
-                        );
-                    }
-                }
-            }
-
-            /*
-            * Buat order.
-            */
-            String orderSql = """
-                    INSERT INTO orders
-                        (
-                            user_id,
-                            table_id,
-                            status,
-                            total,
-                            paid,
-                            change_amount
-                        )
-                    VALUES
-                        (?, ?, 'MENUNGGU', ?, ?, ?)
-                    """;
-
-            int orderId;
-            try (
-                    PreparedStatement orderStmt =
-                            conn.prepareStatement(
-                                    orderSql,
-                                    java.sql.Statement.RETURN_GENERATED_KEYS
-                            )
-            ) {
-                orderStmt.setInt(
-                        1,
-                        Session.getUserId()
-                );
-
-                orderStmt.setInt(
-                        2,
-                        selectedTableId
-                );
-
-                orderStmt.setDouble(
-                        3,
-                        total
-                );
-
-                orderStmt.setDouble(
-                        4,
-                        paid
-                );
-
-                orderStmt.setDouble(
-                        5,
-                        change
-                );
-
-                orderStmt.executeUpdate();
-                try (
-                        ResultSet keys =
-                                orderStmt.getGeneratedKeys()
-                ) {
-                    if (!keys.next()) {
-                        throw new SQLException(
-                                "Gagal mendapatkan ID pesanan."
-                        );
-                    }
-                    orderId = keys.getInt(1);
-                }
-            }
-
-            /*
-            * Masukkan item pesanan.
-            */
-            String itemSql = """
-                    INSERT INTO order_items
-                        (
-                            order_id,
-                            menu_id,
-                            quantity,
-                            price,
-                            subtotal
-                        )
-                    VALUES
-                        (?, ?, ?, ?, ?)
-                    """;
-
-            /*
-            * Kurangi stok.
-            */
-            String stockSql = """
-                    UPDATE menus
-                    SET stock = stock - ?
-                    WHERE id = ?
-                    AND stock >= ?
-                    """;
-
-            /*
-            * Tandai meja terisi.
-            */
-            String tableUpdateSql = """
-                    UPDATE dining_tables
-                    SET status = 'TERISI'
-                    WHERE id = ?
-                    """;
-
-            try (
-                    PreparedStatement itemStmt =
-                            conn.prepareStatement(itemSql);
-                    PreparedStatement stockStmt =
-                            conn.prepareStatement(stockSql);
-                    PreparedStatement tableUpdateStmt =
-                            conn.prepareStatement(
-                                    tableUpdateSql
-                            )
-            ) {
-                for (CartItem item : cart) {
-                    itemStmt.setInt(
-                            1,
-                            orderId
-                    );
-
-                    itemStmt.setInt(
-                            2,
-                            item.menuId
-                    );
-
-                    itemStmt.setInt(
-                            3,
-                            item.quantity
-                    );
-
-                    itemStmt.setDouble(
-                            4,
-                            item.price
-                    );
-
-                    itemStmt.setDouble(
-                            5,
-                            item.getSubtotal()
-                    );
-
-                    itemStmt.executeUpdate();
-
-                    stockStmt.setInt(
-                            1,
-                            item.quantity
-                    );
-
-                    stockStmt.setInt(
-                            2,
-                            item.menuId
-                    );
-
-                    stockStmt.setInt(
-                            3,
-                            item.quantity
-                    );
-
-                    int updated =
-                            stockStmt.executeUpdate();
-
-                    if (updated == 0) {
-                        throw new SQLException(
-                                "Stok menu "
-                                + item.name
-                                + " tidak mencukupi."
-                        );
-                    }
-                }
-
-                tableUpdateStmt.setInt(
-                        1,
-                        selectedTableId
-                );
-                tableUpdateStmt.executeUpdate();
-            }
-
-            conn.commit();
+            // Order + item + kurangi stok + meja terisi dalam 1 transaksi
+            int orderId = orderRepository.createOrder(order, cart);
 
             JOptionPane.showMessageDialog(
                     this,
                     "Pembayaran berhasil!\n"
-                    + "No. Pesanan: #"
-                    + orderId
-                    + "\n"
-                    + "Total: "
-                    + formatRupiah(total)
-                    + "\n"
-                    + "Kembalian: "
-                    + formatRupiah(change),
+                    + "No. Pesanan: #" + orderId + "\n"
+                    + "Total: " + formatRupiah(total) + "\n"
+                    + "Kembalian: " + formatRupiah(change),
                     "Pembayaran Berhasil",
                     JOptionPane.INFORMATION_MESSAGE
             );
@@ -1021,169 +478,62 @@ public class UserFrame extends javax.swing.JFrame {
             updateDashboard();
 
         } catch (SQLException e) {
-            if (conn != null) {
-                try {
-                    conn.rollback();
-                } catch (SQLException rollbackError) {
-                    rollbackError.printStackTrace();
-                }
-            }
-
             JOptionPane.showMessageDialog(
                     this,
-                    "Pembayaran gagal.\n"
-                    + e.getMessage(),
+                    "Pembayaran gagal.\n" + e.getMessage(),
                     "Pembayaran Gagal",
                     JOptionPane.ERROR_MESSAGE
             );
-
-        } finally {
-            if (conn != null) {
-                try {
-                    conn.setAutoCommit(true);
-                    conn.close();
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
-            }
         }
     }
 
     private void loadHistory() {
-        DefaultTableModel model =
-                (DefaultTableModel)
-                        RiwayatTransaksiTabel
-                                .getModel();
-
+        DefaultTableModel model = (DefaultTableModel) RiwayatTransaksiTabel.getModel();
         model.setRowCount(0);
 
         if (!Session.isLoggedIn()) {
             return;
         }
 
-        String sql = """
-                SELECT
-                    o.id,
-                    o.order_date,
-                    d.table_number,
-                    o.status,
-                    o.total,
-                    o.paid,
-                    o.change_amount
-                FROM orders o
-                JOIN dining_tables d
-                    ON d.id = o.table_id
-                WHERE o.user_id = ?
-                ORDER BY o.id DESC
-                """;
-
-        try (
-                Connection conn = DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-            stmt.setInt(
-                    1,
-                    Session.getUserId()
-            );
-            try (
-                    ResultSet rs =
-                            stmt.executeQuery()
-            ) {
-                while (rs.next()) {
-                    model.addRow(new Object[]{
-                        rs.getInt("id"),
-                        rs.getTimestamp("order_date"),
-                        rs.getString("table_number"),
-                        rs.getString("status"),
-                        formatRupiah(
-                                rs.getDouble("total")
-                        ),
-                        formatRupiah(
-                                rs.getDouble("paid")
-                        ),
-                        formatRupiah(
-                                rs.getDouble("change_amount")
-                        )
-                    });
-                }
+        try {
+            for (OrderHistoryModel h : orderRepository.findHistoryByUser(Session.getUserId())) {
+                model.addRow(new Object[]{
+                    h.getId(),
+                    h.getOrderDate(),
+                    h.getTableNumber(),
+                    h.getStatus(),
+                    formatRupiah(h.getTotal()),
+                    formatRupiah(h.getPaid()),
+                    formatRupiah(h.getChangeAmount())
+                });
             }
-
         } catch (SQLException e) {
             showDatabaseError(e);
         }
     }
 
     private void loadSelectedTransactionDetail() {
-        int selectedRow =
-                RiwayatTransaksiTabel
-                        .getSelectedRow();
+        int selectedRow = RiwayatTransaksiTabel.getSelectedRow();
 
         if (selectedRow == -1) {
             return;
         }
 
-        int orderId =
-                Integer.parseInt(
-                        RiwayatTransaksiTabel
-                                .getValueAt(
-                                        selectedRow,
-                                        0
-                                )
-                                .toString()
-                );
+        int orderId = Integer.parseInt(
+                RiwayatTransaksiTabel.getValueAt(selectedRow, 0).toString());
 
-        DefaultTableModel model =
-                (DefaultTableModel)
-                        DetailTransaksiTabel
-                                .getModel();
-
+        DefaultTableModel model = (DefaultTableModel) DetailTransaksiTabel.getModel();
         model.setRowCount(0);
 
-        String sql = """
-                SELECT
-                    m.name,
-                    oi.quantity,
-                    oi.price,
-                    oi.subtotal
-                FROM order_items oi
-                JOIN menus m
-                    ON m.id = oi.menu_id
-                JOIN orders o
-                    ON o.id = oi.order_id
-                WHERE oi.order_id = ?
-                AND o.user_id = ?
-                ORDER BY oi.id
-                """;
-
-        try (
-                Connection conn = DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-            stmt.setInt(
-                    1,
-                    orderId
-            );
-
-            stmt.setInt(
-                    2,
-                    Session.getUserId()
-            );
-            try (
-                    ResultSet rs =
-                            stmt.executeQuery()
-            ) {
-                while (rs.next()) {
-                    model.addRow(new Object[]{
-                        rs.getString("name"),
-                        rs.getInt("quantity"),
-                        (int) rs.getDouble("price"),
-                        (int) rs.getDouble("subtotal")
-                    });
-                }
+        try {
+            for (OrderDetailModel d : orderRepository.findDetails(orderId, Session.getUserId())) {
+                model.addRow(new Object[]{
+                    d.getMenuName(),
+                    d.getQuantity(),
+                    (int) d.getPrice(),
+                    (int) d.getSubtotal()
+                });
             }
-
         } catch (SQLException e) {
             showDatabaseError(e);
         }
@@ -1194,127 +544,16 @@ public class UserFrame extends javax.swing.JFrame {
             return;
         }
 
-        String tableSql = """
-                SELECT
-                    d.table_number
-                FROM dining_tables d
-                JOIN orders o
-                    ON o.table_id = d.id
-                WHERE o.user_id = ?
-                AND o.status IN (
-                        'MENUNGGU',
-                        'DIPROSES',
-                        'SIAP DIANTAR'
-                )
-                ORDER BY o.id DESC
-                LIMIT 1
-                """;
+        try {
+            UserDashboardModel d = dashboardRepository.getUserDashboard(Session.getUserId());
 
-        String processSql = """
-                SELECT COUNT(*)
-                FROM orders
-                WHERE user_id = ?
-                AND status IN (
-                        'MENUNGGU',
-                        'DIPROSES',
-                        'SIAP DIANTAR'
-                )
-                """;
-
-        String transactionSql = """
-                SELECT COUNT(*)
-                FROM orders
-                WHERE user_id = ?
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection()
-        ) {
-            try (
-                    PreparedStatement stmt =
-                            conn.prepareStatement(
-                                    tableSql
-                            )
-            ) {
-                stmt.setInt(
-                        1,
-                        Session.getUserId()
-                );
-                try (
-                        ResultSet rs =
-                                stmt.executeQuery()
-                ) {
-                    if (rs.next()) {
-                        MejaSayaField.setText(
-                                rs.getString(
-                                        "table_number"
-                                )
-                        );
-                    } else {
-                        MejaSayaField.setText("-");
-                    }
-                }
-            }
-            try (
-                    PreparedStatement stmt =
-                            conn.prepareStatement(
-                                    processSql
-                            )
-            ) {
-                stmt.setInt(
-                        1,
-                        Session.getUserId()
-                );
-                try (
-                        ResultSet rs =
-                                stmt.executeQuery()
-                ) {
-                    rs.next();
-                    PesananDalamProsesField.setText(
-                            String.valueOf(
-                                    rs.getInt(1)
-                            )
-                    );
-                }
-            }
-            try (
-                    PreparedStatement stmt =
-                            conn.prepareStatement(
-                                    transactionSql
-                            )
-            ) {
-                stmt.setInt(
-                        1,
-                        Session.getUserId()
-                );
-                try (
-                        ResultSet rs =
-                                stmt.executeQuery()
-                ) {
-                    rs.next();
-                    JumlahTransaksiField.setText(
-                            String.valueOf(
-                                    rs.getInt(1)
-                            )
-                    );
-                }
-            }
+            MejaSayaField.setText(d.getMyTable());
+            PesananDalamProsesField.setText(String.valueOf(d.getOrdersInProgress()));
+            JumlahTransaksiField.setText(String.valueOf(d.getTotalTransactions()));
 
         } catch (SQLException e) {
             showDatabaseError(e);
         }
-    }
-
-    private void showDatabaseError(SQLException e) {
-        JOptionPane.showMessageDialog(
-                this,
-                "Terjadi kesalahan database.\n"
-                + e.getMessage(),
-                "Database Error",
-                JOptionPane.ERROR_MESSAGE
-        );
-        e.printStackTrace();
     }
 
     /**
@@ -1752,6 +991,7 @@ public class UserFrame extends javax.swing.JFrame {
         PesananDalamProsesField.setFont(new java.awt.Font("SansSerif", 1, 12)); // NOI18N
         PesananDalamProsesField.setText("-");
         PesananDalamProsesField.setPreferredSize(new java.awt.Dimension(65, 35));
+        PesananDalamProsesField.addActionListener(this::PesananDalamProsesFieldActionPerformed);
 
         javax.swing.GroupLayout jPanel13Layout = new javax.swing.GroupLayout(jPanel13);
         jPanel13.setLayout(jPanel13Layout);
@@ -2367,6 +1607,10 @@ public class UserFrame extends javax.swing.JFrame {
 
         this.dispose();
     }//GEN-LAST:event_LogoutUserButtonActionPerformed
+
+    private void PesananDalamProsesFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_PesananDalamProsesFieldActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_PesananDalamProsesFieldActionPerformed
 
     /**
      * @param args the command line arguments

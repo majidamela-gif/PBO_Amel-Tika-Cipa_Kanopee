@@ -4,12 +4,10 @@
  */
 package latihan.view;
 
-import latihan.db.DBConnection;
+import latihan.entity.User;
+import latihan.repository.UserRepository;
 import latihan.util.PasswordUtil;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import javax.swing.JOptionPane;
@@ -21,6 +19,7 @@ import javax.swing.JOptionPane;
 public class RegisterFrame extends javax.swing.JFrame {
     
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(RegisterFrame.class.getName());
+    private final UserRepository userRepository = new UserRepository();
 
     /**
      * Creates new form formRegister
@@ -292,51 +291,24 @@ public class RegisterFrame extends javax.swing.JFrame {
             return;
         }
 
-        String checkSql = """
-                SELECT id
-                FROM users
-                WHERE username = ?
-                OR email = ?
-                """;
-
-        String insertSql = """
-                INSERT INTO users
-                    (email, username, password, role)
-                VALUES
-                    (?, ?, ?, 'USER')
-                """;
-
-        try (Connection conn = DBConnection.getConnection()) {
+                try {
             // Cek username/email
-            try (PreparedStatement check =
-                        conn.prepareStatement(checkSql)) {
-                check.setString(1, username);
-                check.setString(2, email);
-                try (ResultSet rs = check.executeQuery()) {
-                    if (rs.next()) {
-                        JOptionPane.showMessageDialog(
-                                this,
-                                "Username atau email sudah digunakan.",
-                                "Registrasi Gagal",
-                                JOptionPane.ERROR_MESSAGE
-                        );
-                        return;
-                    }
-                }
+            if (userRepository.existsByUsernameOrEmail(username, email)) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Username atau email sudah digunakan.",
+                        "Registrasi Gagal",
+                        JOptionPane.ERROR_MESSAGE
+                );
+                return;
             }
 
-            // Hash password
-            String hashedPassword =
-                    PasswordUtil.hashPassword(password);
-
-            // Insert user
-            try (PreparedStatement insert =
-                        conn.prepareStatement(insertSql)) {
-                insert.setString(1, email);
-                insert.setString(2, username);
-                insert.setString(3, hashedPassword);
-                insert.executeUpdate();
-            }
+            // Hash password lalu simpan user baru
+            User user = new User();
+            user.setEmail(email);
+            user.setUsername(username);
+            user.setPassword(PasswordUtil.hashPassword(password));
+            userRepository.insert(user);
 
             JOptionPane.showMessageDialog(
                     this,

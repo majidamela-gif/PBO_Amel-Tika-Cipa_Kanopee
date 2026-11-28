@@ -4,14 +4,20 @@
  */
 package latihan.view;
 
-import latihan.db.DBConnection;
+import latihan.entity.DiningTable;
+import latihan.entity.Menu;
+import latihan.entity.Order;
+import latihan.model.AdminDashboardModel;
+import latihan.model.OrderModel;
+import latihan.model.SalesReportModel;
+import latihan.repository.DashboardRepository;
+import latihan.repository.DiningTableRepository;
+import latihan.repository.MenuRepository;
+import latihan.repository.OrderRepository;
 import latihan.util.Session;
 
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import java.text.NumberFormat;
@@ -29,12 +35,18 @@ import javax.swing.table.DefaultTableModel;
 public class AdminFrame extends javax.swing.JFrame {
     
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(AdminFrame.class.getName());
+
     private final NumberFormat currencyFormat =
-            NumberFormat.getCurrencyInstance(
-                    new Locale("id", "ID")
-            );
-    private final List<Integer> menuIdsByRow = new ArrayList<>();
-    private final List<Integer> tableIdsByRow = new ArrayList<>();
+            NumberFormat.getCurrencyInstance(new Locale("id", "ID"));
+    
+    private final MenuRepository menuRepository = new MenuRepository();
+    private final DiningTableRepository tableRepository = new DiningTableRepository();
+    private final OrderRepository orderRepository = new OrderRepository();
+    private final DashboardRepository dashboardRepository = new DashboardRepository();
+    
+    private final List<OrderModel> ordersByRow = new ArrayList<>();
+    private final List<Menu> menusByRow = new ArrayList<>();
+    private final List<DiningTable> tablesByRow = new ArrayList<>();
 
     /**
      * Creates new form AdminFrame
@@ -44,50 +56,30 @@ public class AdminFrame extends javax.swing.JFrame {
         setLocationRelativeTo(null);
         setupComboBoxes();
         setupTableListeners();
-        TambahMenuButton.addActionListener(
-                e -> addMenu()
-        );
 
-        UbahMenuButton.addActionListener(
-                e -> updateMenu()
-        );
+        // Status Habis => stok otomatis 0 dan field stok dikunci
+        StatusMenuComboBox.addActionListener(e -> updateStockFieldState());
+        updateStockFieldState();
 
-        HapusMenuButton.addActionListener(
-                e -> deleteMenu()
-        );
+        TambahMenuButton.addActionListener(e -> addMenu());
+        UbahMenuButton.addActionListener(e -> updateMenu());
+        HapusMenuButton.addActionListener(e -> deleteMenu());
 
-        TambahMejaButton.addActionListener(
-                e -> addTable()
-        );
-
-        UbahMejaButton.addActionListener(
-                e -> updateTable()
-        );
-
-        HapusMejaButton.addActionListener(
-                e -> deleteTable()
-        );
+        TambahMejaButton.addActionListener(e -> addTable());
+        UbahMejaButton.addActionListener(e -> updateTable());
+        HapusMejaButton.addActionListener(e -> deleteTable());
 
         TampilkanLaporanButton.addActionListener(
-                e -> loadReport(
-                        DariDateChooser.getDate(),
-                        SampaiDateChooser.getDate()
-                )
+                e -> loadReport(DariDateChooser.getDate(), SampaiDateChooser.getDate())
         );
 
-        SemuaTanggalButton.addActionListener(
-                e -> {
+        SemuaTanggalButton.addActionListener(e -> {
+            DariDateChooser.setDate(null);
+            SampaiDateChooser.setDate(null);
+            loadReport(null, null);
+        });
 
-                    DariDateChooser.setDate(null);
-                    SampaiDateChooser.setDate(null);
-
-                    loadReport(null, null);
-                }
-        );
-
-        StatusPesananComboBox.addActionListener(
-                e -> loadOrders()
-        );
+        StatusPesananComboBox.addActionListener(e -> loadOrders());
 
         MejaComboBox.addActionListener(e -> {
             if (MejaComboBox.getSelectedItem() != null) {
@@ -105,1088 +97,352 @@ public class AdminFrame extends javax.swing.JFrame {
 
     private void setupComboBoxes() {
         StatusPesananComboBox.setModel(
-                new DefaultComboBoxModel<>(
-                        new String[]{
-                            "Selesai",
-                            "Belum Selesai"
-                        }
-                )
-        );
+                new DefaultComboBoxModel<>(new String[]{"Selesai", "Belum Selesai"}));
 
         KategoriComboBox.setModel(
-                new DefaultComboBoxModel<>(
-                        new String[]{
-                            "Makanan",
-                            "Minuman",
-                            "Snack"
-                        }
-                )
-        );
+                new DefaultComboBoxModel<>(new String[]{"Makanan", "Minuman", "Snack"}));
 
         StatusMenuComboBox.setModel(
-                new DefaultComboBoxModel<>(
-                        new String[]{
-                            "Tersedia",
-                            "Habis"
-                        }
-                )
-        );
+                new DefaultComboBoxModel<>(new String[]{"Tersedia", "Habis"}));
 
         StatusMejaComboBox.setModel(
-                new DefaultComboBoxModel<>(
-                        new String[]{
-                            "Tersedia",
-                            "Terisi"
-                        }
-                )
-        );
+                new DefaultComboBoxModel<>(new String[]{"Tersedia", "Terisi"}));
     }
 
     private String formatRupiah(double amount) {
-        return currencyFormat.format(amount)
-                .replace("Rp", "Rp ");
+        return currencyFormat.format(amount).replace("Rp", "Rp ");
+    }
+    
+    private void showDatabaseError(SQLException e) {
+        JOptionPane.showMessageDialog(
+                this,
+                "Terjadi kesalahan database:\n" + e.getMessage(),
+                "Database Error",
+                JOptionPane.ERROR_MESSAGE
+        );
+    }
+    
+    private void showWarning(String message, String title) {
+        JOptionPane.showMessageDialog(this, message, title, JOptionPane.WARNING_MESSAGE);
+    }
+
+    private void showInfo(String message, String title) {
+        JOptionPane.showMessageDialog(this, message, title, JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void setupTableListeners() {
-        KelolaPesananTabel.addMouseListener(
-                new MouseAdapter() {
-                    @Override
-                    public void mouseClicked(MouseEvent e) {
-                        if (e.getClickCount() == 2) {
-                            updateSelectedOrderStatus();
-                        }
-                    }
+        KelolaPesananTabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    updateSelectedOrderStatus();
                 }
-        );
+            }
+        });
 
-        KelolaMenuTabel.addMouseListener(
-                new MouseAdapter() {
-                    @Override
-                    public void mouseClicked(MouseEvent e) {
-                        if (e.getClickCount() == 1) {
-                            loadSelectedMenuToForm();
-                        }
-                    }
+        KelolaMenuTabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 1) {
+                    loadSelectedMenuToForm();
                 }
-        );
+            }
+        });
 
-        KelolaMejaTabel.addMouseListener(
-                new MouseAdapter() {
-                    @Override
-                    public void mouseClicked(MouseEvent e) {
-                        if (e.getClickCount() == 1) {
-                            loadSelectedTableToForm();
-                        }
-                    }
+        KelolaMejaTabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 1) {
+                    loadSelectedTableToForm();
                 }
-        );
+            }
+        });
     }
 
     private void loadDashboard() {
-        String totalMejaSql = """
-                SELECT COUNT(*)
-                FROM dining_tables
-                """;
+        try {
+            AdminDashboardModel d = dashboardRepository.getAdminDashboard();
 
-        String mejaTerisiSql = """
-                SELECT COUNT(*)
-                FROM dining_tables
-                WHERE status = 'TERISI'
-                """;
-
-        String totalMenuSql = """
-                SELECT COUNT(*)
-                FROM menus
-                """;
-
-        String transaksiSql = """
-                SELECT COUNT(*)
-                FROM orders
-                """;
-
-        String pendingSql = """
-                SELECT COUNT(*)
-                FROM orders
-                WHERE status <> 'SELESAI'
-                AND status <> 'DIBATALKAN'
-                """;
-
-        String pendapatanSql = """
-                SELECT COALESCE(SUM(total), 0)
-                FROM orders
-                WHERE status = 'SELESAI'
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection()
-        ) {
-            TotalMejaField.setText(
-                    String.valueOf(
-                            executeCount(
-                                    conn,
-                                    totalMejaSql
-                            )
-                    )
-            );
-
-            MejaTerisiField.setText(
-                    String.valueOf(
-                            executeCount(
-                                    conn,
-                                    mejaTerisiSql
-                            )
-                    )
-            );
-
-            TotalMenuField.setText(
-                    String.valueOf(
-                            executeCount(
-                                    conn,
-                                    totalMenuSql
-                            )
-                    )
-            );
-
-            JumlahTransaksiField.setText(
-                    String.valueOf(
-                            executeCount(
-                                    conn,
-                                    transaksiSql
-                            )
-                    )
-            );
-
-            PesananMenungguField.setText(
-                    String.valueOf(
-                            executeCount(
-                                    conn,
-                                    pendingSql
-                            )
-                    )
-            );
-
-            TotalPendapatanField.setText(
-                    formatRupiah(
-                            executeDouble(
-                                    conn,
-                                    pendapatanSql
-                            )
-                    )
-            );
+            TotalMejaField.setText(String.valueOf(d.getTotalTables()));
+            MejaTerisiField.setText(String.valueOf(d.getOccupiedTables()));
+            TotalMenuField.setText(String.valueOf(d.getTotalMenus()));
+            JumlahTransaksiField.setText(String.valueOf(d.getTotalTransactions()));
+            PesananMenungguField.setText(String.valueOf(d.getPendingOrders()));
+            TotalPendapatanField.setText(formatRupiah(d.getTotalRevenue()));
 
         } catch (SQLException e) {
             showDatabaseError(e);
-        }
-    }
-
-    private int executeCount(
-            Connection conn,
-            String sql
-    ) throws SQLException {
-        try (
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql);
-                ResultSet rs =
-                        stmt.executeQuery()
-        ) {
-            rs.next();
-            return rs.getInt(1);
-        }
-    }
-
-    private double executeDouble(
-            Connection conn,
-            String sql
-    ) throws SQLException {
-        try (
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql);
-                ResultSet rs =
-                        stmt.executeQuery()
-        ) {
-            rs.next();
-            return rs.getDouble(1);
         }
     }
 
     private void loadOrders() {
-        DefaultTableModel model =
-                (DefaultTableModel)
-                        KelolaPesananTabel.getModel();
-
+        DefaultTableModel model = (DefaultTableModel) KelolaPesananTabel.getModel();
         model.setRowCount(0);
+        ordersByRow.clear();
 
-        String selectedStatus =
-                StatusPesananComboBox
-                        .getSelectedItem()
-                        .toString();
+        boolean finished = "Selesai".equals(
+                StatusPesananComboBox.getSelectedItem().toString());
 
         Object selectedMejaItem = MejaComboBox.getSelectedItem();
-        String selectedMeja = selectedMejaItem == null
-                ? "Semua Meja"
-                : selectedMejaItem.toString();
+        String tableNumber =
+                (selectedMejaItem == null || "Semua Meja".equals(selectedMejaItem.toString()))
+                        ? null
+                        : selectedMejaItem.toString();
 
-        StringBuilder sql =
-                new StringBuilder("""
-                    SELECT
-                        o.id,
-                        o.order_date,
-                        u.username,
-                        d.table_number,
-                        o.status,
-                        o.total
-                    FROM orders o
-                    JOIN users u
-                        ON u.id = o.user_id
-                    JOIN dining_tables d
-                        ON d.id = o.table_id
-                    WHERE 1 = 1
-                    """);
-
-        List<Object> params =
-                new ArrayList<>();
-
-        if ("Belum Selesai".equals(
-                selectedStatus
-        )) {
-            sql.append("""
-                    AND o.status IN (
-                        'MENUNGGU',
-                        'DIPROSES',
-                        'SIAP DIANTAR'
-                    )
-                    """);
-
-        } else if ("Selesai".equals(
-                selectedStatus
-        )) {
-            sql.append("""
-                    AND o.status = 'SELESAI'
-                    """);
-        }
-
-        if (!"Semua Meja".equals(
-                selectedMeja
-        )) {
-            sql.append(
-                    " AND d.table_number = ? "
-            );
-            params.add(selectedMeja);
-        }
-
-        sql.append(
-                " ORDER BY o.id DESC"
-        );
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(
-                                sql.toString()
-                        )
-        ) {
-            for (int i = 0;
-                i < params.size();
-                i++) {
-                stmt.setObject(
-                        i + 1,
-                        params.get(i)
-                );
+        try {
+            for (OrderModel o : orderRepository.findOrders(finished, tableNumber)) {
+                ordersByRow.add(o);
+                model.addRow(new Object[]{
+                    o.getId(),
+                    o.getOrderDate(),
+                    o.getUsername(),
+                    o.getTableNumber(),
+                    Order.label(o.getStatus()),
+                    formatRupiah(o.getTotal())
+                });
             }
-
-            try (
-                    ResultSet rs =
-                            stmt.executeQuery()
-            ) {
-                while (rs.next()) {
-                    model.addRow(new Object[]{
-                        rs.getInt("id"),
-                        rs.getTimestamp(
-                                "order_date"
-                        ),
-                        rs.getString("username"),
-                        rs.getString(
-                                "table_number"
-                        ),
-                        convertOrderStatus(
-                                rs.getString("status")
-                        ),
-                        formatRupiah(
-                                rs.getDouble("total")
-                        )
-                    });
-                }
-            }
-
         } catch (SQLException e) {
             showDatabaseError(e);
         }
     }
 
-    private String convertOrderStatus(
-            String status
-    ) {
-        return switch (status) {
-            case "MENUNGGU" ->
-                    "Menunggu";
-
-            case "DIPROSES" ->
-                    "Diproses";
-
-            case "SIAP DIANTAR" ->
-                    "Siap Diantar";
-
-            case "SELESAI" ->
-                    "Selesai";
-
-            case "DIBATALKAN" ->
-                    "Dibatalkan";
-
-            default ->
-                    status;
-        };
-    }
-
     private void updateSelectedOrderStatus() {
-        int selectedRow =
-                KelolaPesananTabel.getSelectedRow();
+        int row = KelolaPesananTabel.getSelectedRow();
 
-        if (selectedRow == -1) {
+        if (row == -1 || row >= ordersByRow.size()) {
             return;
         }
 
-        int orderId =
-                Integer.parseInt(
-                        KelolaPesananTabel
-                                .getValueAt(
-                                        selectedRow,
-                                        0
-                                )
-                                .toString()
-                );
-
-        String currentStatus =
-                KelolaPesananTabel
-                        .getValueAt(
-                                selectedRow,
-                                4
-                        )
-                        .toString();
-
-        String nextStatus =
-                getNextStatus(currentStatus);
+        OrderModel order = ordersByRow.get(row);
+        String nextStatus = Order.nextStatus(order.getStatus());
 
         if (nextStatus == null) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Pesanan ini sudah selesai.",
-                    "Status Pesanan",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
+            showInfo("Pesanan ini sudah selesai.", "Status Pesanan");
             return;
         }
 
-        int confirm =
-                JOptionPane.showConfirmDialog(
-                        this,
-                        "Ubah status pesanan #"
-                        + orderId
-                        + " menjadi "
-                        + nextStatus
-                        + "?",
-                        "Konfirmasi",
-                        JOptionPane.YES_NO_OPTION
-                );
+        int confirm = JOptionPane.showConfirmDialog(
+                this,
+                "Ubah status pesanan #" + order.getId()
+                + " menjadi " + Order.label(nextStatus) + "?",
+                "Konfirmasi",
+                JOptionPane.YES_NO_OPTION
+        );
 
-        if (confirm !=
-                JOptionPane.YES_OPTION) {
+        if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
 
-        String dbStatus =
-                convertStatusToDatabase(
-                        nextStatus
-                );
-
-        String sql = """
-                UPDATE orders
-                SET status = ?
-                WHERE id = ?
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-
-            stmt.setString(
-                    1,
-                    dbStatus
-            );
-
-            stmt.setInt(
-                    2,
-                    orderId
-            );
-
-            stmt.executeUpdate();
-
-            /*
-            * Kalau pesanan selesai,
-            * meja dikembalikan menjadi TERSEDIA.
-            */
-            if ("SELESAI".equals(
-                    dbStatus
-            )) {
-                releaseOrderTable(
-                        conn,
-                        orderId
-                );
-            }
+        try {
+            // Kalau SELESAI, meja otomatis dikembalikan jadi TERSEDIA
+            orderRepository.updateStatus(order.getId(), nextStatus);
 
             loadOrders();
             loadDashboard();
             loadTables();
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Status pesanan berhasil diperbarui.",
-                    "Berhasil",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
+            showInfo("Status pesanan berhasil diperbarui.", "Berhasil");
 
         } catch (SQLException e) {
             showDatabaseError(e);
         }
     }
 
-    private String getNextStatus(
-            String status
-    ) {
-        return switch (status) {
-            case "Menunggu" ->
-                    "Diproses";
-
-            case "Diproses" ->
-                    "Siap Diantar";
-
-            case "Siap Diantar" ->
-                    "Selesai";
-
-            default ->
-                    null;
-        };
-    }
-
-    private String convertStatusToDatabase(
-            String status
-    ) {
-        return switch (status) {
-            case "Menunggu" ->
-                    "MENUNGGU";
-
-            case "Diproses" ->
-                    "DIPROSES";
-
-            case "Siap Diantar" ->
-                    "SIAP DIANTAR";
-
-            case "Selesai" ->
-                    "SELESAI";
-
-            default ->
-                    status;
-        };
-    }
-
-    private void releaseOrderTable(
-            Connection conn,
-            int orderId
-    ) throws SQLException {
-        String sql = """
-                UPDATE dining_tables
-                SET status = 'TERSEDIA'
-                WHERE id = (
-                    SELECT table_id
-                    FROM orders
-                    WHERE id = ?
-                )
-                """;
-
-        try (
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-            stmt.setInt(
-                    1,
-                    orderId
-            );
-            stmt.executeUpdate();
-        }
-    }
-    
     private void loadTableFilter() {
         MejaComboBox.removeAllItems();
-        MejaComboBox.addItem(
-                "Semua Meja"
-        );
+        MejaComboBox.addItem("Semua Meja");
 
-        String sql = """
-                SELECT table_number
-                FROM dining_tables
-                ORDER BY table_number
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql);
-                ResultSet rs =
-                        stmt.executeQuery()
-        ) {
-            while (rs.next()) {
-                MejaComboBox.addItem(
-                        rs.getString(
-                                "table_number"
-                        )
-                );
+        try {
+            for (String number : tableRepository.findAllNumbers()) {
+                MejaComboBox.addItem(number);
             }
-
         } catch (SQLException e) {
             showDatabaseError(e);
         }
     }
 
     private void loadMenus() {
-        DefaultTableModel model =
-                (DefaultTableModel)
-                        KelolaMenuTabel.getModel();
-
+        DefaultTableModel model = (DefaultTableModel) KelolaMenuTabel.getModel();
         model.setRowCount(0);
-        menuIdsByRow.clear();
+        menusByRow.clear();
 
-        String sql = """
-                SELECT
-                    id,
-                    name,
-                    category,
-                    price,
-                    stock,
-                    description,
-                    status
-                FROM menus
-                ORDER BY id
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql);
-                ResultSet rs =
-                        stmt.executeQuery()
-        ) {
-            while (rs.next()) {
-                int id = rs.getInt("id");
-                String status = rs.getString("status");
-                menuIdsByRow.add(id);
-
+        try {
+            for (Menu m : menuRepository.findAll()) {
+                menusByRow.add(m);
                 model.addRow(new Object[]{
-                    rs.getString("name"),
-                    rs.getString("category"),
-                    formatRupiah(
-                            rs.getDouble("price")
-                    ),
-                    rs.getInt("stock"),
-                    convertMenuStatus(
-                            status
-                    ),
-                    rs.getString("description")
+                    m.getName(),
+                    m.getCategory(),
+                    formatRupiah(m.getPrice()),
+                    m.getStock(),
+                    convertMenuStatus(m.getStatus()),
+                    m.getDescription()
                 });
             }
-
         } catch (SQLException e) {
             showDatabaseError(e);
         }
     }
-
+    
     private String convertMenuStatus(String status) {
-        if ("TERSEDIA".equalsIgnoreCase(status)) {
-                return "Tersedia";
-        }
-            return "Habis";
+        return Menu.STATUS_TERSEDIA.equalsIgnoreCase(status) ? "Tersedia" : "Habis";
     }
 
-    private void loadSelectedMenuToForm() {
-        int row =
-                KelolaMenuTabel
-                        .getSelectedRow();
+    private void updateStockFieldState() {
+        boolean habis = "Habis".equals(StatusMenuComboBox.getSelectedItem());
 
-        if (row == -1
-                || row >= menuIdsByRow.size()) {
+        if (habis) {
+            StokField.setText("0");
+        }
+        StokField.setEditable(!habis);
+    }
+    
+    private void loadSelectedMenuToForm() {
+        int row = KelolaMenuTabel.getSelectedRow();
+
+        if (row == -1 || row >= menusByRow.size()) {
             return;
         }
 
-        int menuId =
-                menuIdsByRow.get(row);
+        Menu menu = menusByRow.get(row);
 
-        String sql = """
-                SELECT
-                    name,
-                    category,
-                    price,
-                    stock,
-                    status,
-                    description
-                FROM menus
-                WHERE id = ?
-                """;
+        NamaMenuField.setText(menu.getName());
+        KategoriComboBox.setSelectedItem(menu.getCategory());
+        HargaField.setText(String.valueOf(menu.getPrice()));
+        StokField.setText(String.valueOf(menu.getStock()));
+        StatusMenuComboBox.setSelectedItem(convertMenuStatus(menu.getStatus()));
+        DeskripsiField.setText(menu.getDescription() == null ? "" : menu.getDescription());
 
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-            stmt.setInt(
-                    1,
-                    menuId
-            );
-            try (
-                    ResultSet rs =
-                            stmt.executeQuery()
-            ) {
-                if (rs.next()) {
-                    NamaMenuField.setText(
-                            rs.getString("name")
-                    );
-
-                    KategoriComboBox.setSelectedItem(
-                            rs.getString("category")
-                    );
-
-                    HargaField.setText(
-                            String.valueOf(
-                                    rs.getDouble("price")
-                            )
-                    );
-
-                    StokField.setText(
-                            String.valueOf(
-                                    rs.getInt("stock")
-                            )
-                    );
-
-                    StatusMenuComboBox.setSelectedItem(
-                            convertMenuStatus(
-                                    rs.getString("status")
-                            )
-                    );
-
-                    DeskripsiField.setText(
-                            rs.getString("description")
-                                    == null
-                                    ? ""
-                                    : rs.getString(
-                                            "description"
-                                    )
-                    );
-                }
-            }
-
-        } catch (SQLException e) {
-            showDatabaseError(e);
-        }
-    }
-
-    private MenuFormData getMenuFormData() {
-        String name =
-                NamaMenuField.getText().trim();
-
-        String category =
-                KategoriComboBox
-                        .getSelectedItem()
-                        .toString();
-
-        String priceText =
-                HargaField.getText().trim();
-
-        String stockText =
-                StokField.getText().trim();
-
-        String status =
-                StatusMenuComboBox
-                        .getSelectedItem()
-                        .toString();
-
-        String description =
-                DeskripsiField.getText().trim();
-
-        if (name.isEmpty()
-                || priceText.isEmpty()
-                || stockText.isEmpty()) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Nama, harga, dan stok wajib diisi.",
-                    "Menu",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return null;
-        }
-
-        double price;
-        int stock;
-
-        try {
-            price =
-                    Double.parseDouble(
-                            priceText
-                    );
-
-            stock =
-                    Integer.parseInt(
-                            stockText
-                    );
-
-        } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Harga dan stok harus berupa angka.",
-                    "Menu",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return null;
-        }
-
-        if (price < 0) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Harga tidak boleh negatif.",
-                    "Menu",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return null;
-        }
-
-        if (stock < 0) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Stok tidak boleh negatif.",
-                    "Menu",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return null;
-        }
-
-        String dbStatus =
-                "Tersedia".equalsIgnoreCase(
-                        status
-                )
-                ? "TERSEDIA"
-                : "HABIS";
-
-        return new MenuFormData(
-                name,
-                category,
-                price,
-                stock,
-                dbStatus,
-                description
-        );
+        updateStockFieldState();
     }
     
-    private static class MenuFormData {
-        String name;
-        String category;
-        double price;
-        int stock;
-        String status;
-        String description;
+    private Menu getMenuFormData() {
+        String name = NamaMenuField.getText().trim();
+        String priceText = HargaField.getText().trim();
+        String stockText = StokField.getText().trim();
+        boolean habis = "Habis".equalsIgnoreCase(
+                StatusMenuComboBox.getSelectedItem().toString());
 
-        MenuFormData(
-                String name,
-                String category,
-                double price,
-                int stock,
-                String status,
-                String description
-        ) {
-
-            this.name = name;
-            this.category = category;
-            this.price = price;
-            this.stock = stock;
-            this.status = status;
-            this.description = description;
+        // Kalau Habis, stok tidak perlu diisi karena otomatis 0
+        if (name.isEmpty() || priceText.isEmpty() || (!habis && stockText.isEmpty())) {
+            showWarning("Nama, harga, dan stok wajib diisi.", "Menu");
+            return null;
         }
+
+        double price;
+        int stock = 0;
+
+        try {
+            price = Double.parseDouble(priceText);
+            if (!habis) {
+                stock = Integer.parseInt(stockText);
+            }
+        } catch (NumberFormatException e) {
+            showWarning("Harga dan stok harus berupa angka.", "Menu");
+            return null;
+        }
+
+        Menu menu = new Menu();
+        menu.setName(name);
+        menu.setCategory(KategoriComboBox.getSelectedItem().toString());
+        menu.setPrice(price);
+        menu.setStock(stock);
+        menu.setStatus(habis ? Menu.STATUS_HABIS : Menu.STATUS_TERSEDIA); // Habis => stok 0
+        menu.setDescription(DeskripsiField.getText().trim());
+
+        String error = menu.validate();
+        if (error != null) {
+            showWarning(error, "Menu");
+            return null;
+        }
+        return menu;
     }
 
     private void addMenu() {
-        MenuFormData data =
-                getMenuFormData();
+        Menu menu = getMenuFormData();
 
-        if (data == null) {
+        if (menu == null) {
             return;
         }
 
-        String sql = """
-                INSERT INTO menus
-                    (
-                        name,
-                        category,
-                        price,
-                        stock,
-                        status,
-                        description
-                    )
-                VALUES
-                    (?, ?, ?, ?, ?, ?)
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-
-            stmt.setString(
-                    1,
-                    data.name
-            );
-
-            stmt.setString(
-                    2,
-                    data.category
-            );
-
-            stmt.setDouble(
-                    3,
-                    data.price
-            );
-
-            stmt.setInt(
-                    4,
-                    data.stock
-            );
-
-            stmt.setString(
-                    5,
-                    data.status
-            );
-
-            stmt.setString(
-                    6,
-                    data.description
-            );
-
-            stmt.executeUpdate();
+        try {
+            menuRepository.insert(menu);
 
             clearMenuForm();
             loadMenus();
             loadDashboard();
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Menu berhasil ditambahkan.",
-                    "Menu",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
+            showInfo("Menu berhasil ditambahkan.", "Menu");
 
         } catch (SQLException e) {
-
             showDatabaseError(e);
         }
     }
 
     private void updateMenu() {
-        int row =
-                KelolaMenuTabel
-                        .getSelectedRow();
+        int row = KelolaMenuTabel.getSelectedRow();
 
-        if (row == -1
-                || row >= menuIdsByRow.size()) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Pilih menu yang ingin diubah.",
-                    "Menu",
-                    JOptionPane.WARNING_MESSAGE
-            );
-
+        if (row == -1 || row >= menusByRow.size()) {
+            showWarning("Pilih menu yang ingin diubah.", "Menu");
             return;
         }
 
-        MenuFormData data =
-                getMenuFormData();
+        Menu menu = getMenuFormData();
 
-        if (data == null) {
+        if (menu == null) {
             return;
         }
 
-        int menuId =
-                menuIdsByRow.get(row);
+        menu.setId(menusByRow.get(row).getId());
 
-        String sql = """
-                UPDATE menus
-                SET
-                    name = ?,
-                    category = ?,
-                    price = ?,
-                    stock = ?,
-                    status = ?,
-                    description = ?
-                WHERE id = ?
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-
-            stmt.setString(
-                    1,
-                    data.name
-            );
-
-            stmt.setString(
-                    2,
-                    data.category
-            );
-
-            stmt.setDouble(
-                    3,
-                    data.price
-            );
-
-            stmt.setInt(
-                    4,
-                    data.stock
-            );
-
-            stmt.setString(
-                    5,
-                    data.status
-            );
-
-            stmt.setString(
-                    6,
-                    data.description
-            );
-
-            stmt.setInt(
-                    7,
-                    menuId
-            );
-
-            stmt.executeUpdate();
+        try {
+            menuRepository.update(menu);
 
             clearMenuForm();
             loadMenus();
             loadDashboard();
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Menu berhasil diubah.",
-                    "Menu",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
+            showInfo("Menu berhasil diubah.", "Menu");
 
         } catch (SQLException e) {
-
             showDatabaseError(e);
         }
     }
 
     private void deleteMenu() {
-        int row =
-                KelolaMenuTabel
-                        .getSelectedRow();
+        int row = KelolaMenuTabel.getSelectedRow();
 
-        if (row == -1
-                || row >= menuIdsByRow.size()) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Pilih menu yang ingin dihapus.",
-                    "Menu",
-                    JOptionPane.WARNING_MESSAGE
-            );
-
+        if (row == -1 || row >= menusByRow.size()) {
+            showWarning("Pilih menu yang ingin dihapus.", "Menu");
             return;
         }
 
-        int menuId =
-                menuIdsByRow.get(row);
+        Menu menu = menusByRow.get(row);
 
-        String menuName =
-                KelolaMenuTabel
-                        .getValueAt(
-                                row,
-                                0
-                        )
-                        .toString();
+        int confirm = JOptionPane.showConfirmDialog(
+                this,
+                "Hapus menu " + menu.getName() + "?",
+                "Konfirmasi",
+                JOptionPane.YES_NO_OPTION
+        );
 
-        int confirm =
-                JOptionPane.showConfirmDialog(
-                        this,
-                        "Hapus menu "
-                        + menuName
-                        + "?",
-                        "Konfirmasi",
-                        JOptionPane.YES_NO_OPTION
-                );
-
-        if (confirm !=
-                JOptionPane.YES_OPTION) {
-
+        if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
 
-        String sql = """
-                DELETE FROM menus
-                WHERE id = ?
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-
-            stmt.setInt(
-                    1,
-                    menuId
-            );
-
-            stmt.executeUpdate();
+        try {
+            menuRepository.delete(menu.getId());
 
             clearMenuForm();
             loadMenus();
             loadDashboard();
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Menu berhasil dihapus.",
-                    "Menu",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
+            showInfo("Menu berhasil dihapus.", "Menu");
 
         } catch (SQLException e) {
-            JOptionPane.showMessageDialog(
-                    this,
+            showWarning(
                     "Menu tidak dapat dihapus.\n"
                     + "Kemungkinan menu tersebut sudah digunakan dalam transaksi.",
-                    "Menu",
-                    JOptionPane.WARNING_MESSAGE
+                    "Menu"
             );
         }
     }
@@ -1199,447 +455,171 @@ public class AdminFrame extends javax.swing.JFrame {
 
         KategoriComboBox.setSelectedIndex(0);
         StatusMenuComboBox.setSelectedIndex(0);
+        updateStockFieldState();
 
         KelolaMenuTabel.clearSelection();
     }
 
     private void loadTables() {
-        DefaultTableModel model =
-                (DefaultTableModel)
-                        KelolaMejaTabel.getModel();
-
+        DefaultTableModel model = (DefaultTableModel) KelolaMejaTabel.getModel();
         model.setRowCount(0);
+        tablesByRow.clear();
 
-        tableIdsByRow.clear();
-
-        String sql = """
-                SELECT
-                    id,
-                    table_number,
-                    capacity,
-                    status
-                FROM dining_tables
-                ORDER BY id
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql);
-                ResultSet rs =
-                        stmt.executeQuery()
-        ) {
-
-            while (rs.next()) {
-
-                int id =
-                        rs.getInt("id");
-
-                tableIdsByRow.add(id);
-
+        try {
+            for (DiningTable t : tableRepository.findAll()) {
+                tablesByRow.add(t);
                 model.addRow(new Object[]{
-                    rs.getString(
-                            "table_number"
-                    ),
-                    rs.getInt(
-                            "capacity"
-                    ),
-                    convertTableStatus(
-                            rs.getString(
-                                    "status"
-                            )
-                    )
+                    t.getTableNumber(),
+                    t.getCapacity(),
+                    convertTableStatus(t.getStatus())
                 });
             }
-
         } catch (SQLException e) {
-
             showDatabaseError(e);
         }
     }
 
-    private String convertTableStatus(
-            String status
-    ) {
-        if ("TERSEDIA".equalsIgnoreCase(
-                status
-        )) {
-
-            return "Tersedia";
-        }
-
-        return "Terisi";
+    private String convertTableStatus(String status) {
+        return DiningTable.STATUS_TERSEDIA.equalsIgnoreCase(status) ? "Tersedia" : "Terisi";
     }
 
     private void loadSelectedTableToForm() {
-        int row =
-                KelolaMejaTabel
-                        .getSelectedRow();
+        int row = KelolaMejaTabel.getSelectedRow();
 
-        if (row == -1
-                || row >= tableIdsByRow.size()) {
-
+        if (row == -1 || row >= tablesByRow.size()) {
             return;
         }
 
-        NomorMejaField.setText(
-                KelolaMejaTabel
-                        .getValueAt(
-                                row,
-                                0
-                        )
-                        .toString()
-        );
+        DiningTable table = tablesByRow.get(row);
 
-        KapasitasField.setText(
-                KelolaMejaTabel
-                        .getValueAt(
-                                row,
-                                1
-                        )
-                        .toString()
-        );
-
-        StatusMejaComboBox.setSelectedItem(
-                KelolaMejaTabel
-                        .getValueAt(
-                                row,
-                                2
-                        )
-                        .toString()
-        );
+        NomorMejaField.setText(table.getTableNumber());
+        KapasitasField.setText(String.valueOf(table.getCapacity()));
+        StatusMejaComboBox.setSelectedItem(convertTableStatus(table.getStatus()));
     }
 
-    private void addTable() {
-        String number =
-                NomorMejaField
-                        .getText()
-                        .trim();
+    private DiningTable getTableFormData() {
+        String number = NomorMejaField.getText().trim();
+        String capacityText = KapasitasField.getText().trim();
 
-        String capacityText =
-                KapasitasField
-                        .getText()
-                        .trim();
-
-        if (number.isEmpty()
-                || capacityText.isEmpty()) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Nomor meja dan kapasitas wajib diisi.",
-                    "Meja",
-                    JOptionPane.WARNING_MESSAGE
-            );
-
-            return;
+        if (number.isEmpty() || capacityText.isEmpty()) {
+            showWarning("Nomor meja dan kapasitas wajib diisi.", "Meja");
+            return null;
         }
 
         int capacity;
 
         try {
-
-            capacity =
-                    Integer.parseInt(
-                            capacityText
-                    );
-
+            capacity = Integer.parseInt(capacityText);
         } catch (NumberFormatException e) {
+            showWarning("Kapasitas harus berupa angka.", "Meja");
+            return null;
+        }
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Kapasitas harus berupa angka.",
-                    "Meja",
-                    JOptionPane.WARNING_MESSAGE
-            );
+        DiningTable table = new DiningTable();
+        table.setTableNumber(number);
+        table.setCapacity(capacity);
+        table.setStatus(
+                "Tersedia".equalsIgnoreCase(StatusMejaComboBox.getSelectedItem().toString())
+                        ? DiningTable.STATUS_TERSEDIA
+                        : DiningTable.STATUS_TERISI
+        );
 
+        String error = table.validate();
+        if (error != null) {
+            showWarning(error, "Meja");
+            return null;
+        }
+        return table;
+    }
+
+    private void addTable() {
+        DiningTable table = getTableFormData();
+
+        if (table == null) {
             return;
         }
 
-        if (capacity <= 0) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Kapasitas harus lebih dari 0.",
-                    "Meja",
-                    JOptionPane.WARNING_MESSAGE
-            );
-
-            return;
-        }
-
-        String sql = """
-                INSERT INTO dining_tables
-                    (
-                        table_number,
-                        capacity,
-                        status
-                    )
-                VALUES
-                    (?, ?, 'TERSEDIA')
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-
-            stmt.setString(
-                    1,
-                    number
-            );
-
-            stmt.setInt(
-                    2,
-                    capacity
-            );
-
-            stmt.executeUpdate();
+        try {
+            tableRepository.insert(table);
 
             clearTableForm();
-
             loadTables();
             loadTableFilter();
             loadDashboard();
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Meja berhasil ditambahkan.",
-                    "Meja",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
+            showInfo("Meja berhasil ditambahkan.", "Meja");
 
         } catch (SQLException e) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Nomor meja sudah digunakan.",
-                    "Meja",
-                    JOptionPane.WARNING_MESSAGE
-            );
+            showWarning("Nomor meja sudah digunakan.", "Meja");
         }
     }
 
     private void updateTable() {
-        int row =
-                KelolaMejaTabel
-                        .getSelectedRow();
+        int row = KelolaMejaTabel.getSelectedRow();
 
-        if (row == -1
-                || row >= tableIdsByRow.size()) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Pilih meja yang ingin diubah.",
-                    "Meja",
-                    JOptionPane.WARNING_MESSAGE
-            );
-
+        if (row == -1 || row >= tablesByRow.size()) {
+            showWarning("Pilih meja yang ingin diubah.", "Meja");
             return;
         }
 
-        String number =
-                NomorMejaField
-                        .getText()
-                        .trim();
+        DiningTable table = getTableFormData();
 
-        String capacityText =
-                KapasitasField
-                        .getText()
-                        .trim();
-
-        if (number.isEmpty()
-                || capacityText.isEmpty()) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Nomor meja dan kapasitas wajib diisi.",
-                    "Meja",
-                    JOptionPane.WARNING_MESSAGE
-            );
-
+        if (table == null) {
             return;
         }
 
-        int capacity;
+        table.setId(tablesByRow.get(row).getId());
 
         try {
-
-            capacity =
-                    Integer.parseInt(
-                            capacityText
-                    );
-
-        } catch (NumberFormatException e) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Kapasitas harus berupa angka.",
-                    "Meja",
-                    JOptionPane.WARNING_MESSAGE
-            );
-
-            return;
-        }
-
-        int tableId =
-                tableIdsByRow.get(row);
-
-        String status =
-                StatusMejaComboBox
-                        .getSelectedItem()
-                        .toString();
-
-        String dbStatus =
-                "Tersedia".equalsIgnoreCase(
-                        status
-                )
-                ? "TERSEDIA"
-                : "TERISI";
-
-        String sql = """
-                UPDATE dining_tables
-                SET
-                    table_number = ?,
-                    capacity = ?,
-                    status = ?
-                WHERE id = ?
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-
-            stmt.setString(
-                    1,
-                    number
-            );
-
-            stmt.setInt(
-                    2,
-                    capacity
-            );
-
-            stmt.setString(
-                    3,
-                    dbStatus
-            );
-
-            stmt.setInt(
-                    4,
-                    tableId
-            );
-
-            stmt.executeUpdate();
+            tableRepository.update(table);
 
             clearTableForm();
-
             loadTables();
             loadTableFilter();
             loadDashboard();
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Meja berhasil diubah.",
-                    "Meja",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
+            showInfo("Meja berhasil diubah.", "Meja");
 
         } catch (SQLException e) {
-
             showDatabaseError(e);
         }
     }
 
     private void deleteTable() {
-        int row =
-                KelolaMejaTabel
-                        .getSelectedRow();
+        int row = KelolaMejaTabel.getSelectedRow();
 
-        if (row == -1
-                || row >= tableIdsByRow.size()) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Pilih meja yang ingin dihapus.",
-                    "Meja",
-                    JOptionPane.WARNING_MESSAGE
-            );
-
+        if (row == -1 || row >= tablesByRow.size()) {
+            showWarning("Pilih meja yang ingin dihapus.", "Meja");
             return;
         }
 
-        int tableId =
-                tableIdsByRow.get(row);
+        DiningTable table = tablesByRow.get(row);
 
-        String tableNumber =
-                KelolaMejaTabel
-                        .getValueAt(
-                                row,
-                                0
-                        )
-                        .toString();
+        int confirm = JOptionPane.showConfirmDialog(
+                this,
+                "Hapus meja " + table.getTableNumber() + "?",
+                "Konfirmasi",
+                JOptionPane.YES_NO_OPTION
+        );
 
-        int confirm =
-                JOptionPane.showConfirmDialog(
-                        this,
-                        "Hapus meja "
-                        + tableNumber
-                        + "?",
-                        "Konfirmasi",
-                        JOptionPane.YES_NO_OPTION
-                );
-
-        if (confirm !=
-                JOptionPane.YES_OPTION) {
-
+        if (confirm != JOptionPane.YES_OPTION) {
             return;
         }
 
-        String sql = """
-                DELETE FROM dining_tables
-                WHERE id = ?
-                """;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(sql)
-        ) {
-
-            stmt.setInt(
-                    1,
-                    tableId
-            );
-
-            stmt.executeUpdate();
+        try {
+            tableRepository.delete(table.getId());
 
             clearTableForm();
-
             loadTables();
             loadTableFilter();
             loadDashboard();
 
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Meja berhasil dihapus.",
-                    "Meja",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
+            showInfo("Meja berhasil dihapus.", "Meja");
 
         } catch (SQLException e) {
-
-            JOptionPane.showMessageDialog(
-                    this,
+            showWarning(
                     "Meja tidak dapat dihapus karena sudah digunakan dalam transaksi.",
-                    "Meja",
-                    JOptionPane.WARNING_MESSAGE
+                    "Meja"
             );
         }
     }
@@ -1654,154 +634,33 @@ public class AdminFrame extends javax.swing.JFrame {
     }
 
     private void loadReports() {
-        loadReport(
-                DariDateChooser.getDate(),
-                SampaiDateChooser.getDate()
-        );
+        loadReport(DariDateChooser.getDate(), SampaiDateChooser.getDate());
     }
 
-    private void loadReport(
-            java.util.Date from,
-            java.util.Date to
-    ) {
-        DefaultTableModel model =
-                (DefaultTableModel)
-                        LaporanPenjualanTabel
-                                .getModel();
-
+    private void loadReport(java.util.Date from, java.util.Date to) {
+        DefaultTableModel model = (DefaultTableModel) LaporanPenjualanTabel.getModel();
         model.setRowCount(0);
 
-        StringBuilder sql =
-                new StringBuilder("""
-                    SELECT
-                        o.id,
-                        o.order_date,
-                        u.username,
-                        d.table_number,
-                        o.status,
-                        o.total
-                    FROM orders o
-                    JOIN users u
-                        ON u.id = o.user_id
-                    JOIN dining_tables d
-                        ON d.id = o.table_id
-                    WHERE 1 = 1
-                    """);
+        try {
+            SalesReportModel report = orderRepository.getSalesReport(from, to);
 
-        List<java.util.Date> params =
-                new ArrayList<>();
-
-        if (from != null) {
-
-            sql.append(
-                    " AND DATE(o.order_date) >= DATE(?) "
-            );
-
-            params.add(from);
-        }
-
-        if (to != null) {
-
-            sql.append(
-                    " AND DATE(o.order_date) <= DATE(?) "
-            );
-
-            params.add(to);
-        }
-
-        sql.append(
-                " ORDER BY o.order_date DESC"
-        );
-
-        double totalPendapatan = 0;
-
-        int totalTransaksi = 0;
-
-        try (
-                Connection conn =
-                        DBConnection.getConnection();
-                PreparedStatement stmt =
-                        conn.prepareStatement(
-                                sql.toString()
-                        )
-        ) {
-
-            for (int i = 0;
-                i < params.size();
-                i++) {
-
-                stmt.setDate(
-                        i + 1,
-                        new java.sql.Date(
-                                params.get(i)
-                                        .getTime()
-                        )
-                );
+            for (OrderModel o : report.getOrders()) {
+                model.addRow(new Object[]{
+                    o.getId(),
+                    o.getOrderDate(),
+                    o.getUsername(),
+                    o.getTableNumber(),
+                    Order.label(o.getStatus()),
+                    formatRupiah(o.getTotal())
+                });
             }
 
-            try (
-                    ResultSet rs =
-                            stmt.executeQuery()
-            ) {
-
-                while (rs.next()) {
-
-                    double total =
-                            rs.getDouble(
-                                    "total"
-                            );
-
-                    totalPendapatan += total;
-
-                    totalTransaksi++;
-
-                    model.addRow(new Object[]{
-                        rs.getInt("id"),
-                        rs.getTimestamp(
-                                "order_date"
-                        ),
-                        rs.getString(
-                                "username"
-                        ),
-                        rs.getString(
-                                "table_number"
-                        ),
-                        convertOrderStatus(
-                                rs.getString(
-                                        "status"
-                                )
-                        ),
-                        formatRupiah(
-                                total
-                        )
-                    });
-                }
-            }
-
-            LaporanPendapatanField.setText(
-                    formatRupiah(
-                            totalPendapatan
-                    )
-            );
-
-            LaporanTransaksiField.setText(
-                    String.valueOf(
-                            totalTransaksi
-                    )
-            );
+            LaporanPendapatanField.setText(formatRupiah(report.getTotalRevenue()));
+            LaporanTransaksiField.setText(String.valueOf(report.getTotalTransactions()));
 
         } catch (SQLException e) {
             showDatabaseError(e);
         }
-    }
-
-    private void showDatabaseError(SQLException e) {
-        JOptionPane.showMessageDialog(
-            this,
-            "Terjadi kesalahan database:\n" + e.getMessage(),
-            "Database Error",
-            JOptionPane.ERROR_MESSAGE
-        );
     }
 
     /**

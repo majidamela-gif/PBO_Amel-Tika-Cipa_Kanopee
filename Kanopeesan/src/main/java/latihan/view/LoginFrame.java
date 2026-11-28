@@ -4,13 +4,11 @@
  */
 package latihan.view;
 
-import latihan.db.DBConnection;
+import latihan.entity.User;
+import latihan.repository.UserRepository;
 import latihan.util.PasswordUtil;
 import latihan.util.Session;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import javax.swing.JOptionPane;
@@ -21,6 +19,7 @@ import javax.swing.JOptionPane;
 public class LoginFrame extends javax.swing.JFrame {
     
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(LoginFrame.class.getName());
+    private final UserRepository userRepository = new UserRepository();
 
     /**
      * Creates new form formLogin
@@ -199,101 +198,7 @@ public class LoginFrame extends javax.swing.JFrame {
 
     private void LoginButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_LoginButtonActionPerformed
         // TODO add your handling code here:
-        String username = UsernameLoginField.getText().trim();
-        String password = new String(PasswordLoginField.getPassword());
-
-        if (username.isEmpty() || password.isEmpty()) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Username dan password wajib diisi.",
-                    "Login",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return;
-        }
-
-        String sql = """
-                SELECT id, username, email, password, role
-                FROM users
-                WHERE username = ?
-                """;
-
-        try (
-                Connection conn = DBConnection.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(sql)
-        ) {
-            stmt.setString(1, username);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) {
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "Username atau password salah.",
-                            "Login Gagal",
-                            JOptionPane.ERROR_MESSAGE
-                    );
-                    return;
-                }
-
-                String storedPassword = rs.getString("password");
-                boolean passwordValid =
-                        PasswordUtil.verifyPassword(
-                                password,
-                                storedPassword
-                        );
-
-                if (!passwordValid) {
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "Username atau password salah.",
-                            "Login Gagal",
-                            JOptionPane.ERROR_MESSAGE
-                    );
-                    return;
-                }
-
-                String role = rs.getString("role");
-
-                // Tombol login biasa hanya untuk USER
-                if (!"USER".equalsIgnoreCase(role)) {
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "Akun admin harus login melalui tombol Login sebagai Admin.",
-                            "Login",
-                            JOptionPane.WARNING_MESSAGE
-                    );
-                    return;
-                }
-
-                Session.login(
-                        rs.getInt("id"),
-                        rs.getString("username"),
-                        rs.getString("email"),
-                        role
-                );
-
-                JOptionPane.showMessageDialog(
-                        this,
-                        "Login berhasil. Selamat datang, "
-                        + rs.getString("username") + "!",
-                        "Login Berhasil",
-                        JOptionPane.INFORMATION_MESSAGE
-                );
-
-                UserFrame userFrame = new UserFrame();
-                userFrame.setLocationRelativeTo(null);
-                userFrame.setVisible(true);
-                dispose();
-            }
-
-        } catch (SQLException e) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Tidak dapat terhubung ke database.\n"
-                    + e.getMessage(),
-                    "Database Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-        }
+        login(false);
     }//GEN-LAST:event_LoginButtonActionPerformed
 
     private void DaftarButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_DaftarButtonActionPerformed
@@ -306,76 +211,74 @@ public class LoginFrame extends javax.swing.JFrame {
 
     private void LoginAdminButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_LoginAdminButtonActionPerformed
         // TODO add your handling code here:
+        login(true);
+    }//GEN-LAST:event_LoginAdminButtonActionPerformed
+
+     /**
+     * Proses login untuk user biasa maupun admin.
+     *
+     * @param asAdmin true jika lewat tombol "Login sebagai Admin"
+     */
+    private void login(boolean asAdmin) {
         String username = UsernameLoginField.getText().trim();
         String password = new String(PasswordLoginField.getPassword());
+
+        String title = asAdmin ? "Login Admin" : "Login";
+        String failTitle = asAdmin ? "Login Admin Gagal" : "Login Gagal";
 
         if (username.isEmpty() || password.isEmpty()) {
             JOptionPane.showMessageDialog(
                     this,
                     "Username dan password wajib diisi.",
-                    "Login Admin",
+                    title,
                     JOptionPane.WARNING_MESSAGE
             );
             return;
         }
 
-        String sql = """
-                SELECT id, username, email, password, role
-                FROM users
-                WHERE username = ?
-                """;
+        try {
+            User user = userRepository.findByUsername(username);
 
-        try (
-                Connection conn = DBConnection.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(sql)
-        ) {
-            stmt.setString(1, username);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) {
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "Username atau password salah.",
-                            "Login Admin Gagal",
-                            JOptionPane.ERROR_MESSAGE
-                    );
-                    return;
-                }
-
-                String storedPassword = rs.getString("password");
-                boolean passwordValid =
-                        PasswordUtil.verifyPassword(
-                                password,
-                                storedPassword
-                        );
-
-                if (!passwordValid) {
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "Username atau password salah.",
-                            "Login Admin Gagal",
-                            JOptionPane.ERROR_MESSAGE
-                    );
-                    return;
-                }
-
-                String role = rs.getString("role");
-                if (!"ADMIN".equalsIgnoreCase(role)) {
-                    JOptionPane.showMessageDialog(
-                            this,
-                            "Akun ini bukan akun admin.",
-                            "Akses Ditolak",
-                            JOptionPane.ERROR_MESSAGE
-                    );
-                    return;
-                }
-
-                Session.login(
-                        rs.getInt("id"),
-                        rs.getString("username"),
-                        rs.getString("email"),
-                        role
+            if (user == null
+                    || !PasswordUtil.verifyPassword(password, user.getPassword())) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Username atau password salah.",
+                        failTitle,
+                        JOptionPane.ERROR_MESSAGE
                 );
+                return;
+            }
 
+            if (asAdmin && !user.isAdmin()) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Akun ini bukan akun admin.",
+                        "Akses Ditolak",
+                        JOptionPane.ERROR_MESSAGE
+                );
+                return;
+            }
+
+            // Tombol login biasa hanya untuk USER
+            if (!asAdmin && user.isAdmin()) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Akun admin harus login melalui tombol Login sebagai Admin.",
+                        "Login",
+                        JOptionPane.WARNING_MESSAGE
+                );
+                return;
+            }
+
+            Session.login(
+                    user.getId(),
+                    user.getUsername(),
+                    user.getEmail(),
+                    user.getRole()
+            );
+
+            if (asAdmin) {
                 JOptionPane.showMessageDialog(
                         this,
                         "Login admin berhasil.",
@@ -385,8 +288,20 @@ public class LoginFrame extends javax.swing.JFrame {
 
                 AdminFrame adminFrame = new AdminFrame();
                 adminFrame.setVisible(true);
-                dispose();
+
+            } else {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Login berhasil. Selamat datang, " + user.getUsername() + "!",
+                        "Login Berhasil",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+
+                UserFrame userFrame = new UserFrame();
+                userFrame.setLocationRelativeTo(null);
+                userFrame.setVisible(true);
             }
+            dispose();
 
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(
@@ -397,8 +312,8 @@ public class LoginFrame extends javax.swing.JFrame {
                     JOptionPane.ERROR_MESSAGE
             );
         }
-    }//GEN-LAST:event_LoginAdminButtonActionPerformed
-
+    }
+    
     /**
      * @param args the command line arguments
      */
